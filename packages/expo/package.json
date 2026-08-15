@@ -1,0 +1,60 @@
+{
+  "name": "@attributionkit/expo",
+  "version": "0.1.0-preview.1",
+  "description": "Auditable AdAttributionKit and SKAdNetwork runtime plus Expo config plugin",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/attributionkit/attribution#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/attributionkit/attribution.git",
+    "directory": "packages/expo"
+  },
+  "bugs": {
+    "url": "https://github.com/attributionkit/attribution/issues"
+  },
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/index.d.ts",
+      "default": "./build/index.js"
+    },
+    "./app.plugin.js": "./app.plugin.js"
+  },
+  "files": [
+    "app.plugin.js",
+    "plugin/withAttribution.js",
+    "build",
+    "ios",
+    "expo-module.config.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "sync-core": "node scripts/sync-core.mjs",
+    "build": "node scripts/sync-core.mjs && tsc -p tsconfig.json",
+    "check": "node scripts/sync-core.mjs --check && tsc -p tsconfig.json --noEmit && node --test plugin/withAttribution.test.js test/*.test.js",
+    "prepare": "npm run build",
+    "prepack": "npm run check && npm run build"
+  },
+  "peerDependencies": {
+    "expo": ">=54",
+    "react": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "expo": "^57.0.13",
+    "react": "^19.1.1",
+    "react-native": "0.82.1",
+    "typescript": "^5.9.2"
+  },
+  "keywords": [
+    "expo",
+    "react-native",
+    "ios",
+    "adattributionkit",
+    "skadnetwork",
+    "attribution"
+  ]
+}

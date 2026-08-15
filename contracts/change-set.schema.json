@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attribution.sh/contracts/change-set.v1.schema.json",
+  "title": "AttributionKit deterministic ChangeSet v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "operations"],
+  "properties": {
+    "version": { "const": 1 },
+    "operations": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "path", "sha256", "content"],
+            "properties": {
+              "kind": { "const": "write_file" },
+              "path": { "type": "string", "minLength": 1 },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "content": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "path", "merge"],
+            "properties": {
+              "kind": { "const": "patch_json" },
+              "path": { "type": "string", "minLength": 1 },
+              "merge": { "type": "object" }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

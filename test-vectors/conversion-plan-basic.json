@@ -1,0 +1,12 @@
+{
+  "description": "Canonical conversion-plan hash shared by Go, TypeScript, and Swift",
+  "canonicalJson": "{\"events\":[\"install\",\"trial\",\"purchase\",\"retention\"]}",
+  "events": ["install", "trial", "purchase", "retention"],
+  "sha256": "3d8ac4b627c9ac1bfdbe44231ce4261f3a31eaa5f784c52f0f29d48a52481074",
+  "fineConversionValues": {
+    "install": 0,
+    "trial": 1,
+    "purchase": 2,
+    "retention": 3
+  }
+}

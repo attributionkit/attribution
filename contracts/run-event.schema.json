@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attribution.sh/contracts/run-event.v1.schema.json",
+  "title": "AttributionKit NDJSON run event v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "runId", "schemaVersion"],
+      "properties": {
+        "type": { "const": "run_started" },
+        "runId": { "type": "string" },
+        "schemaVersion": { "const": "1.0.0" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "checkId"],
+      "properties": {
+        "type": { "const": "check_started" },
+        "checkId": { "type": "string" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "result"],
+      "properties": {
+        "type": { "const": "check_completed" },
+        "result": { "$ref": "https://attribution.sh/contracts/run-manifest.v1.schema.json#/$defs/result" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "manifest"],
+      "properties": {
+        "type": { "const": "run_completed" },
+        "manifest": { "$ref": "https://attribution.sh/contracts/run-manifest.v1.schema.json" }
+      }
+    }
+  ]
+}

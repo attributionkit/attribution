@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attribution.sh/contracts/run-manifest.v1.schema.json",
+  "title": "AttributionKit verification run manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runId", "schemaVersion", "startedAt", "finishedAt", "environment", "project", "results"],
+  "$defs": {
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checkId", "ruleVersion", "section", "execution", "verdict", "evidence", "basis", "integrity", "comparability", "reason"],
+      "properties": {
+        "checkId": { "type": "string", "minLength": 1 },
+        "ruleVersion": { "type": "string", "minLength": 1 },
+        "section": { "enum": ["config", "build", "your-logic", "device", "production"] },
+        "execution": { "enum": ["queued", "running", "succeeded", "error", "timed_out"] },
+        "verdict": { "enum": ["pass", "fail", "unknown", "not_applicable"] },
+        "evidence": { "enum": ["static", "build", "simulator", "device-lab", "apple", "provider"] },
+        "basis": { "enum": ["measured", "provider_modeled", "unknown"] },
+        "integrity": { "enum": ["generated", "observed_static", "apple_core_verified", "copy_observed_unsigned", "provider_claimed", "modeled", "unknown"] },
+        "comparability": { "enum": ["exact", "bounded", "directional", "none"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "remediation": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "properties": {
+    "runId": { "type": "string", "minLength": 1 },
+    "schemaVersion": { "const": "1.0.0" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": "string", "format": "date-time" },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["distribution", "protocol", "testMechanism", "purchaseEnvironment", "signingKey", "revision"],
+      "properties": {
+        "distribution": { "enum": ["dev", "testflight", "app-store", "unknown"] },
+        "protocol": { "enum": ["aak", "skan", "both", "none", "unknown"] },
+        "testMechanism": { "enum": ["none", "simulator-mock", "device-lab", "developer-settings"] },
+        "purchaseEnvironment": { "enum": ["none", "storekit-test", "sandbox", "production", "unknown"] },
+        "signingKey": { "enum": ["development", "distribution", "unknown"] },
+        "revision": { "type": ["string", "null"] }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundleId", "configHash", "schemaHash"],
+      "properties": {
+        "bundleId": { "type": ["string", "null"] },
+        "configHash": { "type": ["string", "null"] },
+        "schemaHash": { "type": ["string", "null"] }
+      }
+    },
+    "results": { "type": "array", "items": { "$ref": "#/$defs/result" } }
+  }
+}

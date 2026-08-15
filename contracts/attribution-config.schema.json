@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attribution.sh/contracts/attribution-config.v1.schema.json",
+  "title": "AttributionKit desired state v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "mode", "app", "conversionAuthority", "eventTransports", "providers", "schema"],
+  "properties": {
+    "version": { "const": 1 },
+    "mode": { "enum": ["managed", "external"] },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundleId"],
+      "properties": {
+        "bundleId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "conversionAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner"],
+      "properties": {
+        "owner": { "type": "string", "minLength": 1 }
+      }
+    },
+    "eventTransports": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apple"],
+      "properties": {
+        "apple": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["endpoint", "skAdNetworkIds"],
+          "properties": {
+            "endpoint": { "type": "string", "format": "uri", "pattern": "^https://" },
+            "skAdNetworkIds": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^[a-z0-9]+\\.skadnetwork$" }
+            }
+          }
+        },
+        "meta": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["appId"],
+          "properties": {
+            "appId": { "type": "string", "pattern": "^(?!0+$)[0-9]{5,20}$" }
+          }
+        }
+      }
+    },
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "enum": ["install", "trial", "purchase", "retention"] }
+        }
+      }
+    }
+  }
+}

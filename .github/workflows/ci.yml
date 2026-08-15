@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go tests, vet, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test with the race detector
+        run: go test -race ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Build CLI
+        run: go build -trimpath -o "${RUNNER_TEMP}/attribution" ./cmd/attribution
+
+  swift:
+    name: Swift tests and generic iOS simulator build
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Test Swift package
+        run: swift test
+      - name: Build AttributionKit for a generic iOS simulator
+        run: >-
+          xcodebuild
+          -scheme AttributionKit
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "${RUNNER_TEMP}/AttributionKitDerivedData"
+          CODE_SIGNING_ALLOWED=NO
+          build
+          -quiet
+
+  expo:
+    name: Expo check and package smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 8.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Pack the Expo module
+        working-directory: packages/expo
+        run: |
+          mkdir -p "${RUNNER_TEMP}/npm-pack"
+          pnpm pack --pack-destination "${RUNNER_TEMP}/npm-pack"
+      - name: Inspect the npm tarball
+        run: |
+          package="$(find "${RUNNER_TEMP}/npm-pack" -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "${package}"
+          tar -tzf "${package}" | grep -Fx 'package/LICENSE'
+          tar -tzf "${package}" | grep -Fx 'package/expo-module.config.json'
+          tar -tzf "${package}" | grep -Fx 'package/ios/AttributionKitExpo.podspec'
+          tar -xOf "${package}" package/LICENSE | cmp - LICENSE
+
+  action-installer:
+    name: Action installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Exercise portable checksum verification and extraction
+        run: action/test-install.sh
+
+  contracts-and-action:
+    name: Contracts, workflows, and shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 8.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.24.x'
+          cache: false
+      - name: Parse every public JSON document
+        run: >-
+          find contracts comparison-contracts test-vectors
+          -type f -name '*.json' -print0 |
+          xargs -0 -n1 jq empty
+      - name: Validate JSON Schemas and golden fixtures
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm contracts:check
+      - name: Check action shell scripts
+        run: |
+          bash -n action/install.sh action/run.sh action/test-install.sh
+          shellcheck action/install.sh action/run.sh action/test-install.sh
+      - name: Lint GitHub workflows
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$(go env GOPATH)/bin/actionlint"

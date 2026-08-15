@@ -1,0 +1,7 @@
+openapi: 3.1.0
+info:
+  title: AttributionKit API
+  version: 0.1.0-preview.1
+  description: Public contract shell. Hosted API operations begin at the read-only API milestone; no operation is claimed by v0.1.0-preview.1.
+paths: {}
+x-attributionkit-status: deferred-m6

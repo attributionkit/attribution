@@ -1,0 +1,18 @@
+version: 1
+mode: managed
+app:
+  bundleId: sh.attribution.go-e2e
+conversionAuthority:
+  owner: managed-runtime
+eventTransports: []
+providers:
+  apple:
+    endpoint: https://attribution.sh
+    skAdNetworkIds:
+      - cstr6suwn9.skadnetwork
+schema:
+  events:
+    - install
+    - trial
+    - purchase
+    - retention

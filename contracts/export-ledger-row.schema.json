@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attribution.sh/contracts/export-ledger-row.v1.schema.json",
+  "title": "AttributionKit labeled export row v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "recordType", "basis", "integrity", "comparability", "collectionHealth", "finality"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "recordType": { "type": "string", "minLength": 1 },
+    "basis": { "enum": ["measured", "provider_modeled", "unknown"] },
+    "integrity": { "enum": ["apple_core_verified", "copy_observed_unsigned", "provider_claimed", "modeled", "unknown"] },
+    "comparability": { "enum": ["exact", "bounded", "directional", "none"] },
+    "collectionHealth": { "enum": ["healthy", "degraded", "stale", "unknown"] },
+    "finality": { "enum": ["provisional", "settled"] }
+  }
+}

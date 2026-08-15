@@ -1,0 +1,33 @@
+{
+  "runId": "018f0000-0000-7000-8000-000000000001",
+  "schemaVersion": "1.0.0",
+  "startedAt": "2026-08-14T20:00:00Z",
+  "finishedAt": "2026-08-14T20:00:01Z",
+  "environment": {
+    "distribution": "dev",
+    "protocol": "both",
+    "testMechanism": "simulator-mock",
+    "purchaseEnvironment": "none",
+    "signingKey": "development",
+    "revision": "0000000000000000000000000000000000000000"
+  },
+  "project": {
+    "bundleId": "sh.attribution.probe",
+    "configHash": "4cec9827000147cfb00137b862c011b9f1fbb3eea527322426041d1ab296db37",
+    "schemaHash": "3d8ac4b627c9ac1bfdbe44231ce4261f3a31eaa5f784c52f0f29d48a52481074"
+  },
+  "results": [
+    {
+      "checkId": "expo.plugin-registered",
+      "ruleVersion": "1.0.0",
+      "section": "config",
+      "execution": "succeeded",
+      "verdict": "pass",
+      "evidence": "static",
+      "basis": "unknown",
+      "integrity": "observed_static",
+      "comparability": "none",
+      "reason": "The generated wrapper is registered in app.json."
+    }
+  ]
+}

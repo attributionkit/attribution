@@ -1,0 +1,30 @@
+name: AttributionKit verify
+description: Download a pinned AttributionKit CLI release, verify its checksum, and run the independent scanner.
+inputs:
+  version:
+    description: Release tag, for example v0.1.0-preview.1
+    required: false
+    default: v0.1.0-preview.1
+  project:
+    description: Project directory relative to the workspace
+    required: false
+    default: .
+  json:
+    description: Emit the NDJSON event stream
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Install and verify AttributionKit CLI
+      shell: bash
+      env:
+        ATTRIBUTION_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: "$GITHUB_ACTION_PATH/install.sh"
+    - name: Verify attribution state
+      shell: bash
+      env:
+        ATTRIBUTION_PROJECT: ${{ inputs.project }}
+        ATTRIBUTION_JSON: ${{ inputs.json }}
+      run: "$GITHUB_ACTION_PATH/run.sh"

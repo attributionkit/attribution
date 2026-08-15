@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attribution.sh/comparison-contracts/contract.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "provider", "protocol", "population", "sequence", "conversionType", "attributionWindow", "timeAxis", "timezone", "finality", "comparability"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "provider": { "type": "string", "minLength": 1 },
+    "protocol": { "type": "string", "minLength": 1 },
+    "population": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "string", "minLength": 1 },
+    "conversionType": { "type": "string", "minLength": 1 },
+    "attributionWindow": { "type": "string", "minLength": 1 },
+    "timeAxis": { "type": "string", "minLength": 1 },
+    "timezone": { "type": "string", "minLength": 1 },
+    "finality": { "type": "string", "minLength": 1 },
+    "comparability": { "enum": ["exact", "bounded", "directional", "none"] }
+  }
+}

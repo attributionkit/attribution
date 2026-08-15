@@ -1,0 +1,10 @@
+{
+  "name": "attribution-go-e2e",
+  "private": true,
+  "dependencies": {
+    "@attributionkit/expo": "0.1.0-preview.1",
+    "expo": "^57.0.0",
+    "react": "19.1.0",
+    "react-native": "0.82.1"
+  }
+}

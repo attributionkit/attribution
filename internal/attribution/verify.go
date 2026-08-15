@@ -1,0 +1,698 @@
+package attribution
+
+import (
+	"bufio"
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+)
+
+type CheckResult struct {
+	CheckID       string `json:"checkId"`
+	RuleVersion   string `json:"ruleVersion"`
+	Section       string `json:"section"`
+	Execution     string `json:"execution"`
+	Verdict       string `json:"verdict"`
+	Evidence      string `json:"evidence"`
+	Basis         string `json:"basis"`
+	Integrity     string `json:"integrity"`
+	Comparability string `json:"comparability"`
+	Reason        string `json:"reason"`
+	Remediation   string `json:"remediation,omitempty"`
+}
+
+type EnvironmentAttributes struct {
+	Distribution        string  `json:"distribution"`
+	Protocol            string  `json:"protocol"`
+	TestMechanism       string  `json:"testMechanism"`
+	PurchaseEnvironment string  `json:"purchaseEnvironment"`
+	SigningKey          string  `json:"signingKey"`
+	Revision            *string `json:"revision"`
+}
+
+type ProjectIdentity struct {
+	BundleID   *string `json:"bundleId"`
+	ConfigHash *string `json:"configHash"`
+	SchemaHash *string `json:"schemaHash"`
+}
+
+type RunManifest struct {
+	RunID         string                `json:"runId"`
+	SchemaVersion string                `json:"schemaVersion"`
+	StartedAt     string                `json:"startedAt"`
+	FinishedAt    string                `json:"finishedAt"`
+	Environment   EnvironmentAttributes `json:"environment"`
+	Project       ProjectIdentity       `json:"project"`
+	Results       []CheckResult         `json:"results"`
+}
+
+type RunEvent struct {
+	Type          string       `json:"type"`
+	RunID         string       `json:"runId,omitempty"`
+	SchemaVersion string       `json:"schemaVersion,omitempty"`
+	CheckID       string       `json:"checkId,omitempty"`
+	Result        *CheckResult `json:"result,omitempty"`
+	Manifest      *RunManifest `json:"manifest,omitempty"`
+}
+
+type VerifyResult struct {
+	Manifest      RunManifest
+	PersistedPath string
+}
+
+type EmitFunc func(RunEvent) error
+
+type observation struct {
+	project       Project
+	config        *Config
+	configRaw     []byte
+	configError   string
+	pluginRaw     []byte
+	pluginMissing bool
+	manifest      *GeneratedManifest
+	manifestError string
+	secretHits    []string
+}
+
+type rule struct {
+	id            string
+	version       string
+	section       string
+	evidence      string
+	integrity     string
+	comparability string
+	evaluate      func(observation) CheckResult
+}
+
+var secretPatterns = []struct {
+	name    string
+	pattern *regexp.Regexp
+}{
+	{name: "Stripe live secret", pattern: regexp.MustCompile(`(?:sk|rk)_live_[0-9A-Za-z]{8,}`)},
+	{name: "AWS access key", pattern: regexp.MustCompile(`(?:AKIA|ASIA)[0-9A-Z]{16}`)},
+	{name: "private key", pattern: regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----`)},
+	{name: "GitHub token", pattern: regexp.MustCompile(`(?:gh[pousr]_[0-9A-Za-z]{20,}|github_pat_[0-9A-Za-z_]{20,})`)},
+	{name: "Slack token", pattern: regexp.MustCompile(`xox[baprs]-[0-9A-Za-z-]{10,}`)},
+	{name: "generic client secret", pattern: regexp.MustCompile(`(?i)(?:api[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token)\s*[:=]\s*["'][0-9A-Za-z_./+:=-]{20,}["']`)},
+}
+
+func RunVerify(root string, emit EmitFunc) (VerifyResult, error) {
+	if emit == nil {
+		emit = func(RunEvent) error { return nil }
+	}
+	runID, err := randomID()
+	if err != nil {
+		return VerifyResult{}, fmt.Errorf("create run id: %w", err)
+	}
+	started := time.Now().UTC()
+	if err := emit(RunEvent{Type: "run_started", RunID: runID, SchemaVersion: SchemaVersion}); err != nil {
+		return VerifyResult{}, err
+	}
+
+	obs, collectErr := collectObservation(root)
+	rules := verificationRules()
+	results := make([]CheckResult, 0, len(rules))
+	for _, currentRule := range rules {
+		if err := emit(RunEvent{Type: "check_started", CheckID: currentRule.id}); err != nil {
+			return VerifyResult{}, err
+		}
+		var result CheckResult
+		if collectErr != nil {
+			result = CheckResult{
+				CheckID: currentRule.id, RuleVersion: currentRule.version,
+				Section: currentRule.section, Execution: "error", Verdict: "unknown",
+				Evidence: currentRule.evidence, Basis: "unknown", Integrity: "unknown", Comparability: "none",
+				Reason: "collector failed: " + collectErr.Error(),
+			}
+		} else {
+			result = evaluateRuleSafely(currentRule, obs)
+		}
+		results = append(results, result)
+		copy := result
+		if err := emit(RunEvent{Type: "check_completed", Result: &copy}); err != nil {
+			return VerifyResult{}, err
+		}
+	}
+
+	protocol := "unknown"
+	projectIdentity := ProjectIdentity{}
+	if collectErr == nil && obs.config != nil {
+		bundleID := obs.config.App.BundleID
+		configDigest := sha256Hex(obs.configRaw)
+		schemaDigest := schemaHash(*obs.config)
+		projectIdentity = ProjectIdentity{BundleID: &bundleID, ConfigHash: &configDigest, SchemaHash: &schemaDigest}
+		if len(obs.config.Providers.Apple.SKAdNetworkIDs) > 0 {
+			protocol = "both"
+		} else {
+			protocol = "aak"
+		}
+	}
+	manifest := RunManifest{
+		RunID: runID, SchemaVersion: SchemaVersion,
+		StartedAt: started.Format(time.RFC3339Nano), FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		Environment: EnvironmentAttributes{
+			Distribution: "dev", Protocol: protocol, TestMechanism: "none",
+			PurchaseEnvironment: "none", SigningKey: "unknown", Revision: gitRevision(root),
+		},
+		Project: projectIdentity,
+		Results: results,
+	}
+	if err := validateRunManifest(manifest); err != nil {
+		return VerifyResult{}, fmt.Errorf("internal run manifest validation failed: %w", err)
+	}
+	manifestCopy := manifest
+	if err := emit(RunEvent{Type: "run_completed", Manifest: &manifestCopy}); err != nil {
+		return VerifyResult{}, err
+	}
+
+	result := VerifyResult{Manifest: manifest}
+	attributeDir := filepath.Join(root, ".attribution")
+	if info, err := os.Lstat(attributeDir); err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+		raw, err := json.MarshalIndent(manifest, "", "  ")
+		if err != nil {
+			return VerifyResult{}, err
+		}
+		if err := safeAtomicWrite(root, LastRunPath, append(raw, '\n')); err != nil {
+			return VerifyResult{}, fmt.Errorf("persist run manifest: %w", err)
+		}
+		result.PersistedPath = LastRunPath
+	}
+	return result, nil
+}
+
+func randomID() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	// UUIDv4 formatting is sufficient for local run identity and needs no
+	// network, clock sequence, or third-party package.
+	raw[6] = (raw[6] & 0x0f) | 0x40
+	raw[8] = (raw[8] & 0x3f) | 0x80
+	hexValue := hex.EncodeToString(raw)
+	return hexValue[0:8] + "-" + hexValue[8:12] + "-" + hexValue[12:16] + "-" + hexValue[16:20] + "-" + hexValue[20:32], nil
+}
+
+func collectObservation(root string) (observation, error) {
+	project, err := DiscoverExpo(root)
+	if err != nil {
+		return observation{}, err
+	}
+	for _, path := range []string{ConfigPath, ".attribution/.gitignore", PluginPath, ManifestPath} {
+		if err := validateSafeTarget(project.Root, path); err != nil {
+			return observation{}, err
+		}
+	}
+	obs := observation{project: project}
+	config, raw, err := ReadConfig(project.Root)
+	if err != nil {
+		obs.configError = err.Error()
+	} else {
+		obs.config = &config
+		obs.configRaw = raw
+	}
+	pluginRaw, err := os.ReadFile(filepath.Join(project.Root, filepath.FromSlash(PluginPath)))
+	if errors.Is(err, os.ErrNotExist) {
+		obs.pluginMissing = true
+	} else if err != nil {
+		return observation{}, fmt.Errorf("read %s: %w", PluginPath, err)
+	} else {
+		obs.pluginRaw = pluginRaw
+	}
+	manifestRaw, err := os.ReadFile(filepath.Join(project.Root, filepath.FromSlash(ManifestPath)))
+	if errors.Is(err, os.ErrNotExist) {
+		obs.manifestError = ManifestPath + " not found"
+	} else if err != nil {
+		return observation{}, fmt.Errorf("read %s: %w", ManifestPath, err)
+	} else {
+		var manifest GeneratedManifest
+		decoder := json.NewDecoder(bytes.NewReader(manifestRaw))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&manifest); err != nil {
+			obs.manifestError = "invalid " + ManifestPath + ": " + err.Error()
+		} else if err := decoder.Decode(&struct{}{}); err == nil {
+			obs.manifestError = "invalid " + ManifestPath + ": multiple JSON values"
+		} else if !errors.Is(err, io.EOF) {
+			obs.manifestError = "invalid " + ManifestPath + ": " + err.Error()
+		} else {
+			obs.manifest = &manifest
+		}
+	}
+	hits, err := scanSecretShapedValues(project.Root)
+	if err != nil {
+		return observation{}, err
+	}
+	obs.secretHits = hits
+	return obs, nil
+}
+
+func verificationRules() []rule {
+	return []rule{
+		{id: "schema.valid", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleSchemaValid},
+		{id: "expo.package-installed", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleExpoPackage},
+		{id: "expo.plugin-registered", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: rulePluginRegistered},
+		{id: "expo.plugin-wrapper", version: "1.0.0", section: "build", evidence: "static", integrity: "generated", comparability: "none", evaluate: rulePluginWrapper},
+		{id: "app.bundle-id-matches", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleBundleID},
+		{id: "apple.conversion-authority.single-owner", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleSingleOwner},
+		{id: "apple.endpoint.report-attribution", version: "1.0.0", section: "config", evidence: "static", integrity: "generated", comparability: "none", evaluate: ruleEndpoint},
+		{id: "apple.skan.items-present", version: "1.0.0", section: "config", evidence: "static", integrity: "generated", comparability: "none", evaluate: ruleSKAdItems},
+		{id: "meta.app-id-wired", version: "1.0.0", section: "config", evidence: "static", integrity: "generated", comparability: "none", evaluate: ruleMetaAppID},
+		{id: "meta.conversion-management-disabled", version: "1.0.0", section: "config", evidence: "static", integrity: "generated", comparability: "none", evaluate: ruleMetaConversion},
+		{id: "secrets.none-in-client", version: "1.0.0", section: "build", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleNoSecrets},
+		{id: "generated.manifest-hashes", version: "1.0.0", section: "build", evidence: "static", integrity: "generated", comparability: "none", evaluate: ruleManifestHashes},
+		{id: "device.aak-postback", version: "1.0.0", section: "device", evidence: "device-lab", integrity: "unknown", comparability: "none", evaluate: ruleDevicePending},
+		{id: "production.winning-copy", version: "1.0.0", section: "production", evidence: "apple", integrity: "unknown", comparability: "none", evaluate: ruleProductionPending},
+	}
+}
+
+func evaluateRuleSafely(current rule, obs observation) (result CheckResult) {
+	result = CheckResult{
+		CheckID: current.id, RuleVersion: current.version, Section: current.section,
+		Execution: "succeeded", Verdict: "unknown", Evidence: current.evidence,
+		Basis: "unknown", Integrity: current.integrity, Comparability: current.comparability, Reason: "rule returned no result",
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			result = CheckResult{
+				CheckID: current.id, RuleVersion: current.version, Section: current.section,
+				Execution: "error", Verdict: "unknown", Evidence: current.evidence,
+				Basis: "unknown", Integrity: "unknown", Comparability: "none", Reason: fmt.Sprintf("rule panicked: %v", recovered),
+			}
+		}
+	}()
+	evaluated := current.evaluate(obs)
+	evaluated.CheckID = current.id
+	evaluated.RuleVersion = current.version
+	evaluated.Section = current.section
+	evaluated.Evidence = current.evidence
+	if evaluated.Execution == "" {
+		evaluated.Execution = "succeeded"
+	}
+	if evaluated.Basis == "" {
+		evaluated.Basis = "unknown"
+	}
+	if evaluated.Integrity == "" {
+		evaluated.Integrity = current.integrity
+	}
+	if evaluated.Comparability == "" {
+		evaluated.Comparability = current.comparability
+	}
+	return evaluated
+}
+
+func validConfigOrUnknown(obs observation, subject string) *CheckResult {
+	if obs.config != nil {
+		return nil
+	}
+	return &CheckResult{Verdict: "unknown", Reason: "cannot evaluate " + subject + ": " + obs.configError}
+}
+
+func ruleSchemaValid(obs observation) CheckResult {
+	if obs.config == nil {
+		remediation := "Fix " + ConfigPath + " to match the published schema."
+		if strings.Contains(obs.configError, "run `attribution init`") {
+			remediation = "Run `attribution init` to create the desired-state file."
+		}
+		return CheckResult{Verdict: "fail", Reason: "desired state invalid: " + obs.configError, Remediation: remediation}
+	}
+	return CheckResult{Verdict: "pass", Reason: "desired state parses; events are known and unique, and authority is separate from transports"}
+}
+
+func ruleExpoPackage(obs observation) CheckResult {
+	if !attributionPackageInstalled(obs.project) {
+		return CheckResult{Verdict: "fail", Reason: AttributionPkg + " and its app.plugin.js entrypoint are not locally installed/resolvable", Remediation: "Install it with `" + installCommand(obs.project.PackageManager) + "`."}
+	}
+	return CheckResult{Verdict: "pass", Reason: AttributionPkg + " and its app.plugin.js entrypoint are locally installed/resolvable"}
+}
+
+func rulePluginRegistered(obs observation) CheckResult {
+	if legacyPluginRegistered(obs.project.AppJSON) || conflictingAttributionPluginRegistered(obs.project.AppJSON) {
+		return CheckResult{Verdict: "fail", Reason: "app.json contains a legacy, direct, duplicate, or non-final Attribution plugin registration", Remediation: "Run `attribution apply` to leave exactly one ./" + PluginPath + " registration in final position."}
+	}
+	if !pluginRegistered(obs.project.AppJSON) {
+		return CheckResult{Verdict: "fail", Reason: "app.json does not register exactly one final-position ./" + PluginPath, Remediation: "Run `attribution apply`."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "app.json registers exactly one ./" + PluginPath + " in final position"}
+}
+
+func rulePluginWrapper(obs observation) CheckResult {
+	if unknown := validConfigOrUnknown(obs, "the generated Expo wrapper"); unknown != nil {
+		return *unknown
+	}
+	if obs.pluginMissing {
+		return CheckResult{Verdict: "fail", Reason: "generated Expo wrapper is missing", Remediation: "Run `attribution apply`."}
+	}
+	expected, err := renderWrapper(*obs.config, schemaHash(*obs.config))
+	if err != nil {
+		panic(err)
+	}
+	if !bytes.Equal(obs.pluginRaw, expected) {
+		return CheckResult{Verdict: "fail", Reason: "generated Expo wrapper drifted from desired state or does not invoke " + AttributionEntry, Remediation: "Run `attribution apply` to regenerate it."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "deterministic wrapper invokes " + AttributionEntry + " with the expected options"}
+}
+
+func ruleBundleID(obs observation) CheckResult {
+	if unknown := validConfigOrUnknown(obs, "the bundle identifier"); unknown != nil {
+		return *unknown
+	}
+	if obs.project.BundleID == "" {
+		return CheckResult{Verdict: "fail", Reason: "app.json does not declare expo.ios.bundleIdentifier", Remediation: "Set expo.ios.bundleIdentifier to the app's real bundle identifier, then run `attribution apply`."}
+	}
+	if obs.project.BundleID != obs.config.App.BundleID {
+		return CheckResult{Verdict: "fail", Reason: fmt.Sprintf("desired bundle id %s does not match app.json bundle id %s", obs.config.App.BundleID, obs.project.BundleID), Remediation: "Make app.bundleId and expo.ios.bundleIdentifier agree."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "desired bundle id matches app.json"}
+}
+
+func ruleSingleOwner(obs observation) CheckResult {
+	if unknown := validConfigOrUnknown(obs, "conversion authority"); unknown != nil {
+		return *unknown
+	}
+	installed := installedManagers(obs.project)
+	if obs.config.Mode == "external" {
+		ownerFound := false
+		var competing []string
+		for _, manager := range installed {
+			if managerMatchesOwner(manager, obs.config.ConversionAuthority.Owner) {
+				ownerFound = ownerFound || managerPackageInstalled(obs.project, manager)
+			} else if manager.Disableable && shouldDisableMetaConversion(*obs.config) && bytes.Contains(obs.pluginRaw, []byte(`"disableMetaConversionReporting": true`)) {
+				continue
+			} else {
+				competing = append(competing, manager.Name+" ("+manager.Package+")")
+			}
+		}
+		if !ownerFound {
+			return CheckResult{Verdict: "fail", Reason: fmt.Sprintf("declared external authority %q does not correspond to an installed known conversion manager", obs.config.ConversionAuthority.Owner), Remediation: "Install and declare the same known manager, or switch to managed mode."}
+		}
+		if len(competing) > 0 {
+			return CheckResult{Verdict: "fail", Reason: "competing conversion-value manager detected: " + strings.Join(competing, ", "), Remediation: "Keep exactly one external conversion authority."}
+		}
+		return CheckResult{Verdict: "pass", Reason: "declared external authority corresponds to the installed known manager; no known competitor detected"}
+	}
+
+	var competing []string
+	for _, manager := range installed {
+		if manager.Disableable && shouldDisableMetaConversion(*obs.config) && bytes.Contains(obs.pluginRaw, []byte(`"disableMetaConversionReporting": true`)) && bytes.Contains(obs.pluginRaw, []byte(`"metaAppId": "`+obs.config.Providers.Meta.AppID+`"`)) {
+			continue
+		}
+		competing = append(competing, manager.Name+" ("+manager.Package+")")
+	}
+	if len(competing) > 0 {
+		return CheckResult{Verdict: "fail", Reason: "competing conversion-value manager detected in the dependency graph: " + strings.Join(competing, ", "), Remediation: "Remove it or switch to external mode and declare the installed manager as conversionAuthority.owner."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "no known competing conversion-value manager detected"}
+}
+
+func ruleEndpoint(obs observation) CheckResult {
+	if unknown := validConfigOrUnknown(obs, "the Apple endpoint"); unknown != nil {
+		return *unknown
+	}
+	expected, _ := renderWrapper(*obs.config, schemaHash(*obs.config))
+	if obs.pluginMissing || !bytes.Equal(obs.pluginRaw, expected) {
+		return CheckResult{Verdict: "fail", Reason: "generated wrapper does not carry the desired HTTPS Apple endpoint", Remediation: "Run `attribution apply`."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "desired Apple report-attribution endpoint is carried by the Expo config plugin"}
+}
+
+func ruleSKAdItems(obs observation) CheckResult {
+	if unknown := validConfigOrUnknown(obs, "SKAdNetwork ids"); unknown != nil {
+		return *unknown
+	}
+	if len(obs.config.Providers.Apple.SKAdNetworkIDs) == 0 {
+		return CheckResult{Verdict: "not_applicable", Reason: "no SKAdNetwork ids are declared in desired state"}
+	}
+	for _, id := range obs.config.Providers.Apple.SKAdNetworkIDs {
+		if !bytes.Contains(obs.pluginRaw, []byte(id)) {
+			return CheckResult{Verdict: "fail", Reason: "generated wrapper is missing declared SKAdNetwork id " + id, Remediation: "Run `attribution apply`."}
+		}
+	}
+	return CheckResult{Verdict: "pass", Reason: fmt.Sprintf("%d declared SKAdNetwork id(s) are carried by the Expo config plugin", len(obs.config.Providers.Apple.SKAdNetworkIDs))}
+}
+
+func ruleMetaAppID(obs observation) CheckResult {
+	if unknown := validConfigOrUnknown(obs, "the Meta app id"); unknown != nil {
+		return *unknown
+	}
+	if obs.config.Providers.Meta == nil {
+		return CheckResult{Verdict: "not_applicable", Reason: "no Meta provider is declared in desired state"}
+	}
+	if !bytes.Contains(obs.pluginRaw, []byte(`"metaAppId": "`+obs.config.Providers.Meta.AppID+`"`)) {
+		return CheckResult{Verdict: "fail", Reason: "generated wrapper does not carry the declared Meta app id", Remediation: "Run `attribution apply`."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "declared public Meta app id is carried by the Expo config plugin"}
+}
+
+func ruleMetaConversion(obs observation) CheckResult {
+	if unknown := validConfigOrUnknown(obs, "Meta conversion management"); unknown != nil {
+		return *unknown
+	}
+	if _, installed := obs.project.Dependencies["react-native-fbsdk-next"]; !installed {
+		return CheckResult{Verdict: "not_applicable", Reason: "Meta SDK is not installed; conversion-reporting disablement does not apply"}
+	}
+	if obs.config.Mode == "external" && managerOwnerInstalled(obs.project, obs.config.ConversionAuthority.Owner, "react-native-fbsdk-next") {
+		if obs.config.Providers.Meta == nil {
+			return CheckResult{Verdict: "fail", Reason: "Meta is the external authority but providers.meta.appId is absent, so conversion reporting cannot be explicitly enabled", Remediation: "Declare providers.meta.appId with the real public Meta app id, then run `attribution apply`."}
+		}
+		if !bytes.Contains(obs.pluginRaw, []byte(`"disableMetaConversionReporting": false`)) {
+			return CheckResult{Verdict: "fail", Reason: "Meta is the external authority but the generated wrapper does not explicitly keep its conversion reporting enabled", Remediation: "Run `attribution apply`."}
+		}
+		return CheckResult{Verdict: "pass", Reason: "external Meta authority is compiled with disableMetaConversionReporting=false"}
+	}
+	if obs.config.Providers.Meta == nil {
+		return CheckResult{Verdict: "fail", Reason: "Meta SDK is installed but providers.meta.appId is not declared, so its conversion reporting cannot be proven disabled", Remediation: "Declare providers.meta.appId with the real public Meta app id, then run `attribution apply`."}
+	}
+	if !bytes.Contains(obs.pluginRaw, []byte(`"disableMetaConversionReporting": true`)) {
+		return CheckResult{Verdict: "fail", Reason: "disableMetaConversionReporting=true is absent, so secondary Meta conversion reporting is not proven disabled", Remediation: "Run `attribution apply`, or declare Meta as the external authority."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "disableMetaConversionReporting=true explicitly demotes Meta to an event transport"}
+}
+
+func managerOwnerInstalled(project Project, owner, packageName string) bool {
+	for _, manager := range installedManagers(project) {
+		if manager.Package == packageName && managerMatchesOwner(manager, owner) {
+			return true
+		}
+	}
+	return false
+}
+
+func ruleNoSecrets(obs observation) CheckResult {
+	if len(obs.secretHits) > 0 {
+		return CheckResult{Verdict: "fail", Reason: "secret-shaped values found in client source or tracked files: " + strings.Join(obs.secretHits, "; "), Remediation: "Remove secrets from the shipped client and rotate any exposed credentials."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "no secret-shaped values found in client source or tracked files"}
+}
+
+func ruleManifestHashes(obs observation) CheckResult {
+	if unknown := validConfigOrUnknown(obs, "generated hashes"); unknown != nil {
+		return *unknown
+	}
+	if obs.manifest == nil {
+		return CheckResult{Verdict: "fail", Reason: obs.manifestError, Remediation: "Run `attribution apply`."}
+	}
+	wantedConfig := sha256Hex(obs.configRaw)
+	wantedSchema := schemaHash(*obs.config)
+	if obs.manifest.Version != 1 || obs.manifest.GeneratedBy != "attribution "+Version || obs.manifest.Host != "expo" || obs.manifest.Mode != obs.config.Mode || obs.manifest.ConfigHash != wantedConfig || obs.manifest.SchemaHash != wantedSchema || obs.manifest.PackageManager != obs.project.PackageManager {
+		return CheckResult{Verdict: "fail", Reason: "generated manifest metadata or config/schema hash drifted from observed project state", Remediation: "Run `attribution apply`."}
+	}
+	if obs.manifest.AppConfig.Path != "app.json" || obs.manifest.AppConfig.Plugin != "./"+PluginPath {
+		return CheckResult{Verdict: "fail", Reason: "generated manifest does not record the exact app.json plugin registration", Remediation: "Run `attribution apply`."}
+	}
+	if len(obs.manifest.GeneratedFiles) != 1 || obs.manifest.GeneratedFiles[0].Path != PluginPath || obs.manifest.GeneratedFiles[0].SHA256 != sha256Hex(obs.pluginRaw) {
+		return CheckResult{Verdict: "fail", Reason: "generated wrapper hash does not match the manifest", Remediation: "Run `attribution apply`."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "observed config, schema, and generated wrapper hashes match the deterministic manifest"}
+}
+
+func ruleDevicePending(observation) CheckResult {
+	return CheckResult{Verdict: "unknown", Reason: "pending: no physical device-lab run has been observed; static verification cannot prove an Apple round trip"}
+}
+
+func ruleProductionPending(observation) CheckResult {
+	return CheckResult{Verdict: "unknown", Reason: "pending: no production winning postback copy has been observed; local verification cannot infer production evidence"}
+}
+
+func scanSecretShapedValues(root string) ([]string, error) {
+	paths, err := filesToScan(root)
+	if err != nil {
+		return nil, fmt.Errorf("enumerate client source for secret scan: %w", err)
+	}
+	var hits []string
+	for _, relative := range paths {
+		if relative == LastRunPath {
+			continue
+		}
+		absolute := filepath.Join(root, filepath.FromSlash(relative))
+		info, err := os.Lstat(absolute)
+		if err != nil {
+			return nil, fmt.Errorf("inspect %s for secret scan: %w", relative, err)
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		file, err := os.Open(absolute)
+		if err != nil {
+			return nil, fmt.Errorf("open %s for secret scan: %w", relative, err)
+		}
+		sample := make([]byte, 8192)
+		n, sampleErr := file.Read(sample)
+		if closeErr := file.Close(); closeErr != nil {
+			return nil, fmt.Errorf("close %s after secret scan sample: %w", relative, closeErr)
+		}
+		if sampleErr != nil && !errors.Is(sampleErr, io.EOF) {
+			return nil, fmt.Errorf("sample %s for secret scan: %w", relative, sampleErr)
+		}
+		if bytes.IndexByte(sample[:n], 0) >= 0 {
+			continue
+		}
+		if info.Size() > 64*1024*1024 {
+			return nil, fmt.Errorf("text-like tracked file %s exceeds the 64 MiB secret-scan limit; verification cannot honestly claim full coverage", relative)
+		}
+		raw, err := os.ReadFile(absolute)
+		if err != nil {
+			return nil, fmt.Errorf("read %s for secret scan: %w", relative, err)
+		}
+		for _, pattern := range secretPatterns {
+			if pattern.pattern.Match(raw) {
+				hits = append(hits, relative+" ("+pattern.name+")")
+			}
+		}
+	}
+	sort.Strings(hits)
+	return hits, nil
+}
+
+func filesToScan(root string) ([]string, error) {
+	inside := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	inside.Dir = root
+	if err := inside.Run(); err == nil {
+		command := exec.Command("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+		command.Dir = root
+		output, err := command.Output()
+		if err != nil {
+			return nil, err
+		}
+		var paths []string
+		for _, raw := range bytes.Split(output, []byte{0}) {
+			if len(raw) == 0 {
+				continue
+			}
+			path := filepath.ToSlash(string(raw))
+			if !excludedScanPath(path) {
+				paths = append(paths, path)
+			}
+		}
+		sort.Strings(paths)
+		return paths, nil
+	}
+
+	var paths []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		relative = filepath.ToSlash(relative)
+		if entry.IsDir() {
+			if relative != "." && excludedScanDirectory(relative) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !excludedScanPath(relative) {
+			paths = append(paths, relative)
+		}
+		return nil
+	})
+	sort.Strings(paths)
+	return paths, err
+}
+
+func excludedScanDirectory(path string) bool {
+	base := filepath.Base(path)
+	return base == ".git" || base == "node_modules" || base == "Pods" || base == ".gradle" || base == ".expo" || base == "build" || base == "dist"
+}
+
+func excludedScanPath(path string) bool {
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	for _, part := range parts[:maxInt(0, len(parts)-1)] {
+		if excludedScanDirectory(part) {
+			return true
+		}
+	}
+	return false
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func gitRevision(root string) *string {
+	command := exec.Command("git", "rev-parse", "HEAD")
+	command.Dir = root
+	output, err := command.Output()
+	if err != nil {
+		return nil
+	}
+	revision := strings.TrimSpace(string(output))
+	if revision == "" {
+		return nil
+	}
+	return &revision
+}
+
+func validateRunManifest(manifest RunManifest) error {
+	if manifest.RunID == "" || manifest.SchemaVersion != SchemaVersion || manifest.StartedAt == "" || manifest.FinishedAt == "" {
+		return errors.New("missing run identity or timestamps")
+	}
+	allowedExecution := map[string]bool{"queued": true, "running": true, "succeeded": true, "error": true, "timed_out": true}
+	allowedVerdict := map[string]bool{"pass": true, "fail": true, "unknown": true, "not_applicable": true}
+	allowedEvidence := map[string]bool{"static": true, "build": true, "simulator": true, "device-lab": true, "apple": true, "provider": true}
+	allowedBasis := map[string]bool{"measured": true, "provider_modeled": true, "unknown": true}
+	allowedIntegrity := map[string]bool{"generated": true, "observed_static": true, "apple_core_verified": true, "copy_observed_unsigned": true, "provider_claimed": true, "modeled": true, "unknown": true}
+	allowedComparability := map[string]bool{"exact": true, "bounded": true, "directional": true, "none": true}
+	for _, result := range manifest.Results {
+		if result.CheckID == "" || result.RuleVersion == "" || result.Reason == "" || !allowedExecution[result.Execution] || !allowedVerdict[result.Verdict] || !allowedEvidence[result.Evidence] || !allowedBasis[result.Basis] || !allowedIntegrity[result.Integrity] || !allowedComparability[result.Comparability] {
+			return fmt.Errorf("invalid result %q", result.CheckID)
+		}
+	}
+	return nil
+}
+
+func HasVerificationFailures(manifest RunManifest) bool {
+	for _, result := range manifest.Results {
+		if result.Execution != "succeeded" || result.Verdict == "fail" {
+			return true
+		}
+	}
+	return false
+}
+
+func EncodeEvent(writer *bufio.Writer, event RunEvent) error {
+	raw, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	if _, err := writer.Write(append(raw, '\n')); err != nil {
+		return err
+	}
+	return writer.Flush()
+}

@@ -1,0 +1,238 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  go-validation:
+    name: Go tests and vet
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test -race ./...
+      - run: go vet ./...
+      - name: Require tag and CLI versions to match
+        run: test "attribution ${GITHUB_REF_NAME#v}" = "$(go run ./cmd/attribution --version)"
+
+  swift-validation:
+    name: Swift tests and generic iOS simulator build
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: swift test
+      - name: Build AttributionKit for a generic iOS simulator
+        run: >-
+          xcodebuild
+          -scheme AttributionKit
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "${RUNNER_TEMP}/AttributionKitDerivedData"
+          CODE_SIGNING_ALLOWED=NO
+          build
+          -quiet
+
+  contracts:
+    name: Validate public contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 8.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Parse every public JSON document
+        run: >-
+          find contracts comparison-contracts test-vectors
+          -type f -name '*.json' -print0 |
+          xargs -0 -n1 jq empty
+      - name: Validate JSON Schemas and golden fixtures
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm contracts:check
+      - name: Check action shell scripts
+        run: bash -n action/install.sh action/run.sh action/test-install.sh
+
+  action-validation:
+    name: Validate the release installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Lint and exercise the installer
+        run: |
+          shellcheck action/install.sh action/run.sh action/test-install.sh
+          action/test-install.sh
+
+  expo-package:
+    name: Build Expo npm tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 8.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Require tag and package versions to match
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          test "${version}" = "$(node -p "require('./package.json').version")"
+          test "${version}" = "$(node -p "require('./packages/expo/package.json').version")"
+          grep -Fx "    default: v${version}" action/action.yml
+          grep -Fx "  spec.version = '${version}'" AttributionCore.podspec
+          grep -Fx "  spec.version = '${version}'" native/AttributionCore/AttributionCore.podspec
+          grep -Fx "  spec.version = '${version}'" packages/expo/ios/AttributionKitExpo.podspec
+          grep -Fx "    public static let version = \"${version}\"" native/AttributionCore/Sources/AttributionCore/AttributionCore.swift
+      - name: Pack the Expo module
+        working-directory: packages/expo
+        run: |
+          mkdir -p "${RUNNER_TEMP}/npm-pack"
+          pnpm pack --pack-destination "${RUNNER_TEMP}/npm-pack"
+      - name: Verify packaged license and native metadata
+        run: |
+          package="$(find "${RUNNER_TEMP}/npm-pack" -maxdepth 1 -name '*.tgz' -print -quit)"
+          test -n "${package}"
+          tar -xOf "${package}" package/LICENSE | cmp - LICENSE
+          tar -tzf "${package}" | grep -Fx 'package/expo-module.config.json'
+          tar -tzf "${package}" | grep -Fx 'package/ios/AttributionKitExpo.podspec'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-expo
+          path: ${{ runner.temp }}/npm-pack/*.tgz
+          if-no-files-found: error
+
+  cli-archives:
+    name: CLI ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: go-validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            artifact: attribution-linux-amd64.tar.gz
+          - goos: linux
+            goarch: arm64
+            artifact: attribution-linux-arm64.tar.gz
+          - goos: darwin
+            goarch: amd64
+            artifact: attribution-darwin-amd64.tar.gz
+          - goos: darwin
+            goarch: arm64
+            artifact: attribution-darwin-arm64.tar.gz
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build deterministic CLI archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          stage="${RUNNER_TEMP}/stage"
+          mkdir -p "${stage}"
+          CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -buildid=' \
+            -o "${stage}/attribution" ./cmd/attribution
+          cp LICENSE "${stage}/LICENSE"
+          cp THIRD_PARTY_NOTICES "${stage}/THIRD_PARTY_NOTICES"
+          go version -m "${stage}/attribution"
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            -C "${stage}" -cf - LICENSE THIRD_PARTY_NOTICES attribution | gzip -n > "${RUNNER_TEMP}/${ARTIFACT}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ runner.temp }}/${{ matrix.artifact }}
+          if-no-files-found: error
+
+  github-release:
+    name: Checksums, SBOM, provenance, and GitHub release
+    needs:
+      - go-validation
+      - swift-validation
+      - contracts
+      - action-validation
+      - expo-package
+      - cli-archives
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+      - name: Generate source SBOM
+        run: >-
+          syft dir:.
+          --exclude './.git'
+          --exclude './release'
+          -o spdx-json=release/attribution-source.spdx.json
+      - name: Generate SHA-256 checksums
+        working-directory: release
+        run: >-
+          sha256sum
+          attribution-*.tar.gz
+          attributionkit-expo-*.tgz
+          attribution-source.spdx.json
+          > checksums.txt
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: release/*
+      - name: Create tag release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_flags=()
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            release_flags+=(--prerelease --latest=false)
+          fi
+          gh release create "${GITHUB_REF_NAME}" release/* \
+            --verify-tag \
+            --generate-notes \
+            --title "AttributionKit ${GITHUB_REF_NAME}" \
+            "${release_flags[@]}"

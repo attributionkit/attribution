@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "mode": "managed",
+  "app": {
+    "bundleId": "sh.attribution.probe"
+  },
+  "conversionAuthority": {
+    "owner": "managed-runtime"
+  },
+  "eventTransports": [],
+  "providers": {
+    "apple": {
+      "endpoint": "https://attribution.sh/",
+      "skAdNetworkIds": [
+        "cstr6suwn9.skadnetwork"
+      ]
+    }
+  },
+  "schema": {
+    "events": [
+      "install",
+      "trial",
+      "purchase",
+      "retention"
+    ]
+  }
+}

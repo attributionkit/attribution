@@ -53,6 +53,8 @@ printf '%s\n' \
   > "${fake_bin}/curl"
 chmod +x "${fake_bin}/curl"
 
+# The single-quoted lines below intentionally defer expansion to the fake gh process.
+# shellcheck disable=SC2016
 printf '%s\n' \
   '#!/usr/bin/env bash' \
   'set -euo pipefail' \

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Corrected the public MCP contract to the four authenticated post-connect tools; initial authorization remains an explicit CLI plus human-browser ceremony and credentials never enter MCP arguments or results.
 - Added strict, local-only `probe import` support for fresh Expo and SwiftUI `AttributionUpdateReport` JSON, with a non-secret expiring artifact and an isolated Your Logic simulator result.
 - Added the explicit Go hosted-control-plane client: browser `connect`, exact-byte `runs upload`, connectivity-only `ping`, and labeled `live-check`.
 - Published the corresponding OpenAPI and agent-safe MCP contracts without adding networking or credentials to the Swift/Expo runtimes.

@@ -173,18 +173,98 @@ for (const operationPath of [
 
 const mcp = JSON.parse(await readFile(resolve(root, 'contracts/mcp-tools.json'), 'utf8'));
 const expectedTools = new Set([
-  'attribution_connect',
-  'attribution_connect_complete',
+  'attribution_link_application',
   'attribution_upload_run',
   'attribution_ping',
   'attribution_live_check',
 ]);
-if (mcp.tools.length !== expectedTools.size || mcp.tools.some((tool) => !expectedTools.has(tool.name))) {
+const observedMcpTools = new Set(mcp.tools.map((tool) => tool.name));
+if (
+  mcp.tools.length !== expectedTools.size ||
+  observedMcpTools.size !== expectedTools.size ||
+  [...expectedTools].some((name) => !observedMcpTools.has(name))
+) {
   throw new Error('MCP hosted-control-plane tool set drifted');
 }
 const mcpPublicSurface = JSON.stringify(mcp);
-if (mcpPublicSurface.includes('deviceCode') || mcpPublicSurface.includes('accessToken')) {
-  throw new Error('MCP tool schemas must not expose device codes or bearer tokens');
+for (const forbidden of [
+  'attribution_connect',
+  'authorizationSessionId',
+  'verificationUri',
+  'userCode',
+  'deviceCode',
+  'accessToken',
+]) {
+  if (mcpPublicSurface.includes(forbidden)) {
+    throw new Error(`MCP resource-server contract exposed forbidden authorization surface ${forbidden}`);
+  }
+}
+if (
+  mcp.status !== 'authenticated-post-connect-resource-server' ||
+  mcp.authorizationBoundary?.initialAuthorization !== 'cli-human-browser-only' ||
+  mcp.authorizationBoundary?.mcpAuthentication !== 'preconfigured-bearer' ||
+  mcp.authorizationBoundary?.credentialToolArguments !== false ||
+  mcp.authorizationBoundary?.credentialToolResults !== false
+) {
+  throw new Error('MCP authorization boundary drifted from CLI plus human browser authorization');
+}
+const linkApplicationTool = mcp.tools.find((tool) => tool.name === 'attribution_link_application');
+const bundleIdPattern = '^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$';
+if (
+  linkApplicationTool.inputSchema.additionalProperties !== false ||
+  JSON.stringify(linkApplicationTool.inputSchema.required) !== JSON.stringify(['bundleId']) ||
+  linkApplicationTool.inputSchema.properties.bundleId.pattern !== bundleIdPattern ||
+  linkApplicationTool.outputSchema.additionalProperties !== false ||
+  JSON.stringify(linkApplicationTool.outputSchema.required) !==
+    JSON.stringify(['applicationId', 'organizationId', 'bundleId']) ||
+  linkApplicationTool.outputSchema.properties.bundleId.pattern !== bundleIdPattern ||
+  linkApplicationTool.annotations?.readOnlyHint !== true ||
+  linkApplicationTool.annotations?.destructiveHint !== false ||
+  linkApplicationTool.annotations?.idempotentHint !== true ||
+  linkApplicationTool.annotations?.openWorldHint !== false
+) {
+  throw new Error('attribution_link_application drifted from the private read-confirm tool');
+}
+const uploadRunTool = mcp.tools.find((tool) => tool.name === 'attribution_upload_run');
+if (
+  uploadRunTool.inputSchema.additionalProperties !== false ||
+  uploadRunTool.inputSchema.properties.applicationId.maxLength !== 128 ||
+  uploadRunTool.inputSchema.properties.manifestBytesBase64.maxLength !== 1398104 ||
+  uploadRunTool.inputSchema.properties.contentDigest.pattern !== '^sha-256=:[A-Za-z0-9+/]{43}=:$' ||
+  uploadRunTool.inputSchema.properties.idempotencyKey.pattern !== '^[A-Za-z0-9._:-]+$' ||
+  uploadRunTool.outputSchema.additionalProperties !== false ||
+  uploadRunTool.annotations?.readOnlyHint !== false ||
+  uploadRunTool.annotations?.destructiveHint !== false ||
+  uploadRunTool.annotations?.idempotentHint !== true ||
+  uploadRunTool.annotations?.openWorldHint !== false
+) {
+  throw new Error('attribution_upload_run drifted from the private exact-byte tool');
+}
+const pingTool = mcp.tools.find((tool) => tool.name === 'attribution_ping');
+if (
+  pingTool.inputSchema.additionalProperties !== false ||
+  pingTool.inputSchema.properties.applicationId.maxLength !== 128 ||
+  pingTool.inputSchema.properties.idempotencyKey.pattern !== '^[A-Za-z0-9._:-]+$' ||
+  pingTool.outputSchema.properties.status.const !== 'reachable' ||
+  pingTool.outputSchema.properties.productionEvidence.const !== false ||
+  pingTool.annotations?.readOnlyHint !== false ||
+  pingTool.annotations?.destructiveHint !== false ||
+  pingTool.annotations?.idempotentHint !== true ||
+  pingTool.annotations?.openWorldHint !== false
+) {
+  throw new Error('attribution_ping drifted from the private connectivity-only tool');
+}
+const liveCheckTool = mcp.tools.find((tool) => tool.name === 'attribution_live_check');
+if (
+  liveCheckTool.inputSchema.additionalProperties !== false ||
+  liveCheckTool.inputSchema.properties.applicationId.maxLength !== 128 ||
+  liveCheckTool.outputSchema.$ref !== 'https://attribution.sh/contracts/live-status.v1.schema.json' ||
+  liveCheckTool.annotations?.readOnlyHint !== true ||
+  liveCheckTool.annotations?.destructiveHint !== false ||
+  liveCheckTool.annotations?.idempotentHint !== true ||
+  liveCheckTool.annotations?.openWorldHint !== false
+) {
+  throw new Error('attribution_live_check drifted from the private read-only tool');
 }
 const canonicalCheckIds = new Set([
   'schema.valid',

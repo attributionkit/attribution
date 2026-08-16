@@ -16,7 +16,7 @@ The runtime contains no identifiers, event stream, or network client. It maps a 
 
 **Do not ship the preview's `https://attribution.sh/` endpoint in a production app.** The receiver is not claimed by the current preview release. The public repository now defines an explicit hosted CLI client and its OpenAPI/MCP contracts, while the Vercel Blob → Workflow → PlanetScale → WorkOS implementation remains a separate private cloud system. This source change alone is not deployment evidence.
 
-The hosted client flow is documented in [docs/hosted-control-plane.md](docs/hosted-control-plane.md). It adds `connect`, `runs upload`, `ping`, and `live-check` to the Go CLI without adding networking to either app runtime.
+The hosted client flow is documented in [docs/hosted-control-plane.md](docs/hosted-control-plane.md). It adds `connect`, `runs upload`, `ping`, and `live-check` to the Go CLI without adding networking to either app runtime. Browser authorization remains CLI plus human only; the authenticated post-connect MCP contract contains exactly link/read-confirm, exact run upload, connectivity ping, and live check tools and never transports credentials through tool arguments or results.
 
 ## Install
 

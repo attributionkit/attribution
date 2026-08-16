@@ -52,7 +52,21 @@ attribution live-check --json
 
 `live-check` returns the same five sections as local verification: Config, Build, Your Logic, Device, and Production. Every section and supporting fact retains basis, integrity, comparability, collection health, and finality. Connectivity and uploaded-manifest facts are supporting facts only. The public client rejects a Production pass unless it includes an `appleReceipt` fact with `basis: measured` and `integrity: apple_core_verified`.
 
-The exact HTTP contract is in [`contracts/openapi.yaml`](../contracts/openapi.yaml). Agent-safe tool schemas are in [`contracts/mcp-tools.json`](../contracts/mcp-tools.json); `attribution_connect` and `attribution_connect_complete` split the interactive browser handoff while server-retained possession proof and bearer tokens are intentionally never exposed in MCP tool output.
+The exact HTTP contract is in [`contracts/openapi.yaml`](../contracts/openapi.yaml). Agent-safe post-connect tool schemas are in [`contracts/mcp-tools.json`](../contracts/mcp-tools.json).
+
+## Coding-agent MCP boundary
+
+Initial authorization is deliberately **CLI plus human browser only**. The MCP resource server does not expose `attribution_connect`, `attribution_connect_complete`, an authorization-session tool, or token exchange. The supported handoff is:
+
+1. The human completes `attribution connect` in their browser.
+2. Outside the conversation, the human places the resulting application-scoped credential into the MCP host's protected bearer-credential setting.
+3. The authenticated coding agent calls exactly these four tools:
+   - `attribution_link_application` — read-only confirmation that the bearer-scoped application matches the repository bundle identifier; returns only `applicationId`, `organizationId`, and `bundleId`.
+   - `attribution_upload_run` — uploads canonical base64 of the exact `last-run.json` bytes with their digest and idempotency key.
+   - `attribution_ping` — records authenticated connectivity and always returns `productionEvidence: false`.
+   - `attribution_live_check` — reads the unified five-section result.
+
+Bearer tokens, device codes, authorization-session identifiers, verification URLs, and user codes are neither MCP tool arguments nor MCP tool results. The model must never ask the human to paste a credential into chat. The CLI commands remain a complete non-MCP path; use one post-connect transport for a given action rather than uploading or pinging twice.
 
 ## Sanitized end-to-end transcript
 

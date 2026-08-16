@@ -1,43 +1,72 @@
 {
   "schemaVersion": "1.0.0",
-  "status": "public-client-contract-private-service",
+  "status": "authenticated-post-connect-resource-server",
+  "authorizationBoundary": {
+    "initialAuthorization": "cli-human-browser-only",
+    "mcpAuthentication": "preconfigured-bearer",
+    "credentialToolArguments": false,
+    "credentialToolResults": false
+  },
   "tools": [
     {
-      "name": "attribution_connect",
-      "description": "Start the human browser authorization flow for a bundle identifier without exposing a device code or access token to the agent.",
+      "name": "attribution_link_application",
+      "title": "Confirm linked Attribution application",
+      "description": "Use this when you need to confirm that the already-authorized MCP credential is scoped to the repository bundle identifier. This reads linkage only and never returns credentials.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "required": ["bundleId"],
         "properties": {
-          "bundleId": { "type": "string", "minLength": 3 }
+          "bundleId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$"
+          }
         }
       },
       "outputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["authorizationSessionId", "verificationUri", "userCode", "expiresAt"],
+        "required": ["applicationId", "organizationId", "bundleId"],
         "properties": {
-          "authorizationSessionId": { "type": "string" },
-          "verificationUri": { "type": "string", "format": "uri" },
-          "verificationUriComplete": { "type": "string", "format": "uri" },
-          "userCode": { "type": "string" },
-          "expiresAt": { "type": "string", "format": "date-time" }
+          "applicationId": { "type": "string" },
+          "organizationId": { "type": "string" },
+          "bundleId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$"
+          }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
       "name": "attribution_upload_run",
-      "description": "Upload an exact verification run manifest with its SHA-256 content digest and idempotency key.",
+      "title": "Upload an exact Attribution verification run",
+      "description": "Use this when the public CLI has produced last-run.json and you need the hosted live check to evaluate it. Supply canonical base64 of the exact bytes plus its SHA-256 Content-Digest and digest-derived idempotency key. Uploaded Device and Production claims are always downgraded by the control plane.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "required": ["applicationId", "manifestBytesBase64", "contentDigest", "idempotencyKey"],
         "properties": {
-          "applicationId": { "type": "string", "minLength": 1 },
-          "manifestBytesBase64": { "type": "string", "contentEncoding": "base64", "description": "Base64 of the exact last-run.json bytes; the server validates the decoded JSON against the public run-manifest schema." },
-          "contentDigest": { "type": "string", "pattern": "^sha-256=:[A-Za-z0-9+/]+={0,2}:$" },
-          "idempotencyKey": { "type": "string", "minLength": 16, "maxLength": 128 }
+          "applicationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "manifestBytesBase64": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 1398104,
+            "contentEncoding": "base64",
+            "description": "Canonical base64 of the exact last-run.json bytes within the 1 MiB decoded manifest limit."
+          },
+          "contentDigest": { "type": "string", "pattern": "^sha-256=:[A-Za-z0-9+/]{43}=:$" },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 16,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          }
         }
       },
       "outputSchema": {
@@ -48,51 +77,30 @@
           "manifestUploadId": { "type": "string" },
           "status": { "enum": ["accepted", "duplicate"] }
         }
-      }
-    },
-    {
-      "name": "attribution_connect_complete",
-      "description": "Complete a human-approved browser authorization using server-retained possession proof. Never returns a bearer token or device code.",
-      "inputSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["authorizationSessionId"],
-        "properties": {
-          "authorizationSessionId": { "type": "string", "minLength": 1 }
-        }
       },
-      "outputSchema": {
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["status"],
-            "properties": { "status": { "const": "pending" } }
-          },
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["status", "applicationId", "organizationId", "bundleId"],
-            "properties": {
-              "status": { "const": "connected" },
-              "applicationId": { "type": "string", "minLength": 1 },
-              "organizationId": { "type": "string", "minLength": 1 },
-              "bundleId": { "type": "string", "minLength": 3 }
-            }
-          }
-        ]
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
       "name": "attribution_ping",
-      "description": "Check authenticated control-plane reachability. This is never Apple, device, or Production evidence.",
+      "title": "Ping the Attribution control plane",
+      "description": "Use this when you need to verify authenticated control-plane reachability for the linked application. This records connectivity only and can never create device or Apple Production evidence.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "required": ["applicationId", "idempotencyKey"],
         "properties": {
-          "applicationId": { "type": "string", "minLength": 1 },
-          "idempotencyKey": { "type": "string", "minLength": 16, "maxLength": 128 }
+          "applicationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 16,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          }
         }
       },
       "outputSchema": {
@@ -104,21 +112,34 @@
           "status": { "const": "reachable" },
           "productionEvidence": { "const": false }
         }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
       "name": "attribution_live_check",
-      "description": "Read the labeled Config, Build, Your Logic, Device, and Production status plus supporting facts.",
+      "title": "Read the Attribution live checklist",
+      "description": "Use this when you need the labeled Config, Build, Your Logic, Device, and Production status for the linked application. Production passes only from qualifying verified Apple evidence in the private ledger.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "required": ["applicationId"],
         "properties": {
-          "applicationId": { "type": "string", "minLength": 1 }
+          "applicationId": { "type": "string", "minLength": 1, "maxLength": 128 }
         }
       },
       "outputSchema": {
         "$ref": "https://attribution.sh/contracts/live-status.v1.schema.json"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     }
   ]

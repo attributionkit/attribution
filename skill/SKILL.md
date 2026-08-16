@@ -15,10 +15,13 @@ license: Apache-2.0
 7. Run `npx expo prebuild --clean --platform ios`, build the generated app, and invoke a configured event in the simulator. Save the exact one-line `AttributionUpdateReport` JSON emitted by the example; do not synthesize or edit it.
 8. Within 15 minutes run `attribution probe import --framework expo --target simulator --report <path>`. For a SwiftUI consumer report use `--framework swiftui` and point `--project` at the checkout holding the matching current config/generated plan. Never use this import path for a device or Production claim.
 9. Run `attribution verify --json` again. Update task state only from the event stream and final manifest. A valid imported report may pass only `runtime.report-imported` under Your Logic; confirm Device and Production remain unknown.
-10. Run `attribution connect`. Open the returned browser URL, but pause for the human to approve authorization and never enter, read, or relay their credentials. Confirm that only the non-secret `.attribution/cloud.json` binding was written; the token belongs in the OS keychain.
-11. Run `attribution runs upload`. This must upload the exact `.attribution/last-run.json` bytes with `Content-Digest` and `Idempotency-Key`; do not regenerate or normalize the JSON.
-12. Run `attribution ping`. Record only authenticated control-plane reachability. Never upgrade a ping to Apple, Device, or Production evidence.
-13. Run `attribution live-check --json`. Reconcile Config, Build, Your Logic, Device, and Production from the returned labeled facts. Keep Device and Production grey/unknown unless each has its own qualifying evidence. Production may pass only from a cryptographically verified real Apple receipt.
+10. Run `attribution connect`. Open the returned browser URL, but pause for the human to approve authorization and never enter, read, or relay their credentials. Confirm that only the non-secret `.attribution/cloud.json` binding was written; the token belongs in the OS keychain. Initial authorization is never an MCP tool call.
+11. Choose one authenticated post-connect transport:
+    - CLI: continue with steps 12–14.
+    - MCP: the human configures the already-issued application credential in the MCP host's protected bearer field outside the conversation. Call `attribution_link_application` with the repository bundle ID and require the returned bundle ID to match, then call `attribution_upload_run`, `attribution_ping`, and `attribution_live_check`. No MCP connect/exchange tool exists, and no MCP argument or result may contain a token, device code, authorization-session identifier, verification URL, or user code. Do not also repeat steps 12–14.
+12. Run `attribution runs upload`. This must upload the exact `.attribution/last-run.json` bytes with `Content-Digest` and `Idempotency-Key`; do not regenerate or normalize the JSON.
+13. Run `attribution ping`. Record only authenticated control-plane reachability. Never upgrade a ping to Apple, Device, or Production evidence.
+14. Run `attribution live-check --json`. Reconcile Config, Build, Your Logic, Device, and Production from the returned labeled facts. Keep Device and Production grey/unknown unless each has its own qualifying evidence. Production may pass only from a cryptographically verified real Apple receipt.
 
 ## Evidence language
 

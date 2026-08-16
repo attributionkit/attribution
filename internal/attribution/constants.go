@@ -15,7 +15,7 @@ const (
 
 // Version is a variable so release builds can embed the signed tag without
 // modifying source: -ldflags "-X github.com/attributionkit/attribution/internal/attribution.Version=vX.Y.Z".
-var Version = "0.1.0-preview.2"
+var Version = "0.1.0-preview.3"
 
 var knownEvents = map[string]struct{}{
 	"install":   {},

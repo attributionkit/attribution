@@ -9,7 +9,7 @@ Create an iOS SwiftUI app with Xcode 15 or newer (Swift tools 5.9+). Choose **Fi
 For CocoaPods, consume the root podspec from the same immutable tag:
 
 ```ruby
-pod 'AttributionCore', :git => 'https://github.com/attributionkit/attribution.git', :tag => 'v0.1.0-preview.2'
+pod 'AttributionCore', :git => 'https://github.com/attributionkit/attribution.git', :tag => 'v0.1.0-preview.3'
 ```
 
 ## 2. Add compiled plan values

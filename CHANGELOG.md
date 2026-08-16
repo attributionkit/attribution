@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.1.0-preview.3 - 2026-08-16
+
+- Added `attribution agent setup --host codex` and a project-bound stdio MCP server whose name and Keychain account are bound to the canonical API, organization, application, and bundle identity without placing credentials in MCP configuration, arguments, results, or conversation context.
+- Bound the local agent tools to the repository application and exact local run manifest, while preserving the four post-connect actions and the independent Device/Production evidence boundary.
+- Bound Keychain lookup to the canonical API, organization, application, and bundle identity; preview.2 cloud bindings must reconnect and cannot redirect an existing token by editing repository state.
+- Made live-check consumers reject extra sections, invented taxonomy labels, and malformed observation timestamps before CLI or MCP rendering.
+- Fixed browser authorization polling so the CLI waits for the advertised initial interval and honors bounded HTTP 429 `slow_down` / `Retry-After` responses.
+- Published the bounded authorization polling response in OpenAPI and added semantic contract checks for both polling and the Keychain-backed local MCP bridge.
+
 ## 0.1.0-preview.2 - 2026-08-16
 
 - Corrected the public MCP contract to the four authenticated post-connect tools; initial authorization remains an explicit CLI plus human-browser ceremony and credentials never enter MCP arguments or results.

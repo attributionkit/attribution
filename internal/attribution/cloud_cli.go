@@ -169,6 +169,21 @@ func parseCloudCLIOptions(command string, args []string) (cloudCLIOptions, error
 }
 
 func runConnect(ctx context.Context, root string, options cloudCLIOptions, store TokenStore, stdout, stderr io.Writer) int {
+	return runConnectWithWait(ctx, root, options, store, stdout, stderr, waitForCloudPoll)
+}
+
+func waitForCloudPoll(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func runConnectWithWait(ctx context.Context, root string, options cloudCLIOptions, store TokenStore, stdout, stderr io.Writer, wait func(context.Context, time.Duration) error) int {
 	config, _, err := ReadConfig(root)
 	if err != nil {
 		return renderCLIError(err, stderr)
@@ -200,8 +215,11 @@ func runConnect(ctx context.Context, root string, options cloudCLIOptions, store
 	var exchange AuthorizationExchange
 	var authorized bool
 	for {
-		if time.Now().After(expiresAt) {
+		if time.Now().Add(interval).After(expiresAt) {
 			return renderCLIError(errors.New("browser authorization expired; run `attribution connect` again"), stderr)
+		}
+		if err := wait(ctx, interval); err != nil {
+			return renderCLIError(err, stderr)
 		}
 		exchange, authorized, err = client.ExchangeAuthorization(ctx, session.AuthorizationSessionID, session.DeviceCode)
 		if err != nil {
@@ -210,12 +228,11 @@ func runConnect(ctx context.Context, root string, options cloudCLIOptions, store
 		if authorized {
 			break
 		}
-		timer := time.NewTimer(interval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return renderCLIError(ctx.Err(), stderr)
-		case <-timer.C:
+		if exchange.Status == "slow_down" {
+			retryAfter := time.Duration(exchange.RetryAfterSeconds) * time.Second
+			if retryAfter > interval {
+				interval = retryAfter
+			}
 		}
 	}
 	link, err := client.LinkApplication(ctx, exchange.AccessToken, config.App.BundleID)
@@ -225,13 +242,16 @@ func runConnect(ctx context.Context, root string, options cloudCLIOptions, store
 	if link.ApplicationID != exchange.ApplicationID || link.OrganizationID != exchange.OrganizationID {
 		return renderCLIError(errors.New("authorization and application-link identities did not match"), stderr)
 	}
-	credentialRef := "application:" + link.ApplicationID
+	credentialRef, normalizedBaseURL, err := cloudCredentialReference(client.BaseURL, link.OrganizationID, link.ApplicationID, link.BundleID)
+	if err != nil {
+		return renderCLIError(err, stderr)
+	}
 	if err := store.Set(credentialRef, exchange.AccessToken); err != nil {
 		return renderCLIError(err, stderr)
 	}
 	binding := CloudBinding{
 		SchemaVersion:  cloudBindingVersion,
-		BaseURL:        client.BaseURL,
+		BaseURL:        normalizedBaseURL,
 		OrganizationID: link.OrganizationID,
 		ApplicationID:  link.ApplicationID,
 		BundleID:       link.BundleID,

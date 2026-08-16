@@ -16,7 +16,9 @@ The probe import is local-only and can add evidence only to Your Logic. Its igno
 
 `connect` reads the configured bundle identifier, creates a possession-bound authorization session, and opens the returned `verificationUriComplete` in the browser when available. The CLI also displays the fallback URL and user code. After the human authorizes the session, the CLI returns the high-entropy device code to the exchange endpoint and links the exact bundle identifier.
 
-The resulting `.attribution/cloud.json` contains only the API base URL, organization/application identifiers, bundle identifier, schema version, and an opaque credential reference. The access token is stored in macOS Keychain under service `sh.attribution.cli`. Device codes and access tokens are never written to repository files or printed.
+The resulting `.attribution/cloud.json` contains only the canonical API base URL, organization/application identifiers, bundle identifier, schema version, and an opaque credential reference. That reference is derived from the complete non-secret binding, so editing the file cannot redirect an existing Keychain token to another origin. The access token is stored in macOS Keychain under service `sh.attribution.cli`. Device codes and access tokens are never written to repository files or printed.
+
+Bindings written by preview.2 used the older unbound Keychain account format and fail closed in preview.3. Run `attribution connect` once with preview.3 to replace that binding and Keychain entry.
 
 For a local or staging API, use an explicit base URL during connect:
 
@@ -59,14 +61,23 @@ The exact HTTP contract is in [`contracts/openapi.yaml`](../contracts/openapi.ya
 Initial authorization is deliberately **CLI plus human browser only**. The MCP resource server does not expose `attribution_connect`, `attribution_connect_complete`, an authorization-session tool, or token exchange. The supported handoff is:
 
 1. The human completes `attribution connect` in their browser.
-2. Outside the conversation, the human places the resulting application-scoped credential into the MCP host's protected bearer-credential setting.
-3. The authenticated coding agent calls exactly these four tools:
-   - `attribution_link_application` — read-only confirmation that the bearer-scoped application matches the repository bundle identifier; returns only `applicationId`, `organizationId`, and `bundleId`.
-   - `attribution_upload_run` — uploads canonical base64 of the exact `last-run.json` bytes with their digest and idempotency key.
+2. From the connected repository, run:
+
+   ```sh
+   attribution agent setup --host codex
+   ```
+
+   This registers an absolute, project-bound stdio command in the user's Codex configuration. The default server name includes a stable hash of the canonical non-secret API, organization, application, and bundle binding, so separate connections do not overwrite one another. It does not copy the access token or its Keychain reference into that configuration. Start a new Codex session in the repository after registration.
+
+3. The coding agent calls exactly these four context-bound tools with no arguments:
+   - `attribution_link_application` — read-only confirmation that the Keychain-scoped application still matches the repository bundle identifier; returns only `applicationId`, `organizationId`, and `bundleId`.
+   - `attribution_upload_run` — reads and validates the repository's exact `.attribution/last-run.json` bytes, then uploads those bytes with their digest and idempotency key.
    - `attribution_ping` — records authenticated connectivity and always returns `productionEvidence: false`.
    - `attribution_live_check` — reads the unified five-section result.
 
-Bearer tokens, device codes, authorization-session identifiers, verification URLs, and user codes are neither MCP tool arguments nor MCP tool results. The model must never ask the human to paste a credential into chat. The CLI commands remain a complete non-MCP path; use one post-connect transport for a given action rather than uploading or pinging twice.
+The stdio process reloads `.attribution/cloud.json`, confirms it still matches the configured bundle identifier, and retrieves the token from macOS Keychain only inside the local process. Bearer tokens, device codes, authorization-session identifiers, verification URLs, user codes, application IDs, and manifest payloads are not MCP tool inputs. Credentials are never MCP results. The model must never ask the human to paste a credential into chat.
+
+The hosted streamable-HTTP MCP endpoint remains available for MCP hosts with their own protected bearer-credential facility. Its explicit schemas are in [`contracts/mcp-tools.json`](../contracts/mcp-tools.json). The local CLI commands remain a complete non-MCP path; use one post-connect transport for a given action rather than uploading or pinging twice.
 
 ## Sanitized end-to-end transcript
 
@@ -88,6 +99,10 @@ If prompted, enter code: ABCD-EFGH
 [human approves in browser]
 Connected sh.example.app to application app_example.
 Wrote non-secret binding to .attribution/cloud.json; access token is in the OS keychain.
+
+$ attribution agent setup --host codex
+Registered the project-bound Attribution MCP server as "attribution-1156bbd14f5f" in Codex.
+The access token remains in macOS Keychain and is never placed in MCP configuration or tool data.
 
 $ attribution runs upload
 Uploaded exact .attribution/last-run.json bytes (manifest upload upload_example; status: accepted).

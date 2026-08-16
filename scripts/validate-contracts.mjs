@@ -209,6 +209,16 @@ const pingResponse = openapi.paths['/v1/applications/{applicationId}/pings'].pos
 if (pingResponse.properties.productionEvidence.const !== false) {
   throw new Error('ping contract must explicitly prohibit Production evidence');
 }
+const exchangeResponses =
+  openapi.paths['/v1/cli/authorization-sessions/{authorizationSessionId}/exchange'].post.responses;
+const slowDown = exchangeResponses['429'];
+if (
+  slowDown?.headers?.['Retry-After']?.schema?.minimum !== 1 ||
+  slowDown?.headers?.['Retry-After']?.schema?.maximum !== 60 ||
+  slowDown?.content?.['application/json']?.schema?.properties?.status?.const !== 'slow_down'
+) {
+  throw new Error('authorization exchange must publish its bounded slow_down response');
+}
 for (const operationPath of [
   '/v1/applications/{applicationId}/verification-runs',
   '/v1/applications/{applicationId}/pings',
@@ -228,6 +238,7 @@ const expectedTools = new Set([
 ]);
 const observedMcpTools = new Set(mcp.tools.map((tool) => tool.name));
 if (
+  mcp.schemaVersion !== '1.1.0' ||
   mcp.tools.length !== expectedTools.size ||
   observedMcpTools.size !== expectedTools.size ||
   [...expectedTools].some((name) => !observedMcpTools.has(name))
@@ -255,6 +266,16 @@ if (
   mcp.authorizationBoundary?.credentialToolResults !== false
 ) {
   throw new Error('MCP authorization boundary drifted from CLI plus human browser authorization');
+}
+if (
+  mcp.localProjectBridge?.status !== 'post-connect-keychain-backed-stdio' ||
+  mcp.localProjectBridge?.setupCommand !== 'attribution agent setup --host codex' ||
+  mcp.localProjectBridge?.configurationContainsCredential !== false ||
+  mcp.localProjectBridge?.toolArgumentsContainCredential !== false ||
+  mcp.localProjectBridge?.toolResultsContainCredential !== false ||
+  JSON.stringify(mcp.localProjectBridge?.tools) !== JSON.stringify([...expectedTools])
+) {
+  throw new Error('MCP local project bridge drifted from the Keychain-backed post-connect boundary');
 }
 const linkApplicationTool = mcp.tools.find((tool) => tool.name === 'attribution_link_application');
 const bundleIdPattern = '^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$';

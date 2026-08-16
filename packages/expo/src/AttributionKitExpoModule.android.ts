@@ -3,7 +3,7 @@ const unsupported = (): never => {
 };
 
 export default {
-  runtimeVersion: '0.1.0-preview.2',
+  runtimeVersion: '0.1.0-preview.3',
   schemaHash: unsupported,
   conversionValue: unsupported,
   recordRaw: async () => unsupported(),

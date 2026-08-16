@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: AttributionKit hosted control-plane API
-  version: 1.0.0
+  version: 1.1.0
   description: >-
     Public client contract for explicit CLI-to-cloud operations. These operations are not used by the
     Swift or Expo runtime. A connectivity ping or manifest upload is supporting evidence only and can
@@ -69,6 +69,24 @@ paths:
                 properties:
                   status:
                     const: pending
+        '429':
+          description: The client polled before the advertised interval elapsed
+          headers:
+            Retry-After:
+              required: true
+              schema:
+                type: integer
+                minimum: 1
+                maximum: 60
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status:
+                    const: slow_down
         default:
           $ref: '#/components/responses/Error'
   /v1/applications/link:

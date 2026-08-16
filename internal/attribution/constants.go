@@ -4,18 +4,22 @@ const (
 	SchemaVersion    = "1.1.0"
 	ConfigPath       = ".attribution/config.yaml"
 	PluginPath       = ".attribution/plugin/withAttribution.js"
+	SwiftSourcePath  = ".attribution/swift/AttributionKit.generated.swift"
+	SwiftPlistPath   = ".attribution/swift/AttributionKit-Info.plist"
+	SwiftGuidePath   = ".attribution/swift/README.md"
 	ManifestPath     = ".attribution/manifest.json"
 	LastRunPath      = ".attribution/last-run.json"
 	ProbePath        = ".attribution/probe.json"
 	CloudConfigPath  = ".attribution/cloud.json"
 	AttributionPkg   = "@attributionkit/expo"
 	AttributionEntry = "@attributionkit/expo/app.plugin.js"
+	AttributionRepo  = "https://github.com/attributionkit/attribution"
 	ReleaseBaseURL   = "https://github.com/attributionkit/attribution/releases/download"
 )
 
 // Version is a variable so release builds can embed the signed tag without
 // modifying source: -ldflags "-X github.com/attributionkit/attribution/internal/attribution.Version=vX.Y.Z".
-var Version = "0.1.0-preview.3"
+var Version = "0.1.0-preview.4"
 
 var knownEvents = map[string]struct{}{
 	"install":   {},

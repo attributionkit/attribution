@@ -11,6 +11,7 @@ const schemaPaths = [
   'contracts/attribution-update-report.schema.json',
   'contracts/change-set.schema.json',
   'contracts/export-ledger-row.schema.json',
+  'contracts/generated-manifest.schema.json',
   'contracts/run-manifest.schema.json',
   'contracts/run-event.schema.json',
   'contracts/live-status.schema.json',
@@ -31,6 +32,8 @@ const fixtures = [
   ['https://attribution.sh/contracts/attribution-update-report.v1.schema.json', 'test-vectors/attribution-update-report-simulator.json'],
   ['https://attribution.sh/contracts/run-manifest.v1.schema.json', 'test-vectors/run-manifest-static.json'],
   ['https://attribution.sh/contracts/change-set.v1.schema.json', 'test-vectors/change-set-expo.json'],
+  ['https://attribution.sh/contracts/generated-manifest.v1.schema.json', 'test-vectors/generated-manifest-expo.json'],
+  ['https://attribution.sh/contracts/generated-manifest.v1.schema.json', 'test-vectors/generated-manifest-swiftui.json'],
   ['https://attribution.sh/contracts/live-status.v1.schema.json', 'test-vectors/live-status-connectivity.json'],
   ['https://attribution.sh/contracts/runtime-probe.v1.schema.json', 'test-vectors/runtime-probe-simulator.json'],
   ['https://attribution.sh/comparison-contracts/contract.v1.schema.json', 'test-vectors/comparison-contract-meta-aak.json'],
@@ -80,6 +83,32 @@ const changeSet = fixtureData.get('test-vectors/change-set-expo.json');
 for (const operation of changeSet.operations) {
   if (operation.kind === 'write_file' && sha256(operation.content) !== operation.sha256) {
     throw new Error(`change-set digest mismatch for ${operation.path}`);
+  }
+}
+
+const generatedExpo = fixtureData.get('test-vectors/generated-manifest-expo.json');
+const generatedSwiftUI = fixtureData.get('test-vectors/generated-manifest-swiftui.json');
+if (
+  generatedExpo.host !== 'expo' ||
+  generatedExpo.appConfig.plugin !== './.attribution/plugin/withAttribution.js' ||
+  generatedSwiftUI.host !== 'swiftui' ||
+  generatedSwiftUI.appConfig.generatedSwift !== '.attribution/swift/AttributionKit.generated.swift' ||
+  generatedSwiftUI.appConfig.packageProduct !== 'AttributionCore'
+) {
+  throw new Error('generated-manifest host vectors drifted from their exact integration contracts');
+}
+const validateGeneratedManifest = ajv.getSchema('https://attribution.sh/contracts/generated-manifest.v1.schema.json');
+for (const [label, mutate] of [
+  ['Expo appConfig on SwiftUI', (value) => { value.appConfig = structuredClone(generatedExpo.appConfig); }],
+  ['SwiftPM on Expo', (value) => { value.packageManager = 'swiftpm'; }],
+  ['wrong Swift source path', (value) => { value.generatedFiles[0].path = 'Fixture/AttributionKit.generated.swift'; }],
+  ['external SwiftUI mode', (value) => { value.mode = 'external'; }],
+]) {
+  const base = label === 'SwiftPM on Expo' ? generatedExpo : generatedSwiftUI;
+  const invalid = structuredClone(base);
+  mutate(invalid);
+  if (validateGeneratedManifest(invalid)) {
+    throw new Error(`generated-manifest accepted ${label}`);
   }
 }
 const appPatch = changeSet.operations.find(

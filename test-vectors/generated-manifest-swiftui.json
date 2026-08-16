@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "generatedBy": "attribution 0.1.0-preview.4",
+  "host": "swiftui",
+  "packageManager": "swiftpm",
+  "mode": "managed",
+  "configHash": "4cec9827000147cfb00137b862c011b9f1fbb3eea527322426041d1ab296db37",
+  "schemaHash": "3d8ac4b627c9ac1bfdbe44231ce4261f3a31eaa5f784c52f0f29d48a52481074",
+  "generatedFiles": [
+    {
+      "path": ".attribution/swift/AttributionKit.generated.swift",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "path": ".attribution/swift/AttributionKit-Info.plist",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    {
+      "path": ".attribution/swift/README.md",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+    }
+  ],
+  "appConfig": {
+    "path": "Fixture.xcodeproj/project.pbxproj",
+    "target": "Fixture",
+    "infoPlist": "Fixture/Info.plist",
+    "generatedSwift": ".attribution/swift/AttributionKit.generated.swift",
+    "packageProduct": "AttributionCore"
+  }
+}

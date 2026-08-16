@@ -184,6 +184,13 @@ func importRuntimeProbeAt(root string, options ProbeImportOptions, now time.Time
 	if err != nil {
 		return RuntimeProbeArtifact{}, rejectProbe(err.Error())
 	}
+	expectedFramework := manifest.Host
+	if expectedFramework != "expo" && expectedFramework != "swiftui" {
+		return RuntimeProbeArtifact{}, rejectProbe("generated plan host is unsupported")
+	}
+	if options.Framework != expectedFramework {
+		return RuntimeProbeArtifact{}, rejectProbe(fmt.Sprintf("--framework %s does not match the generated %s host plan", options.Framework, expectedFramework))
+	}
 	configHash := sha256Hex(configRaw)
 	schemaDigest := schemaHash(config)
 	if err := validateProbePlan(absoluteRoot, config, configHash, schemaDigest, manifest); err != nil {
@@ -264,14 +271,17 @@ func readProbeManifest(root string) (GeneratedManifest, []byte, error) {
 }
 
 func validateProbePlan(root string, config Config, configHash, schemaDigest string, manifest GeneratedManifest) error {
-	project, err := DiscoverExpo(root)
+	project, err := DiscoverProject(root)
 	if err != nil {
 		return err
+	}
+	if project.Host == "swiftui" {
+		return validateSwiftProbePlan(project, config, configHash, schemaDigest, manifest)
 	}
 	if manifest.Version != 1 || manifest.GeneratedBy != "attribution "+Version || manifest.Host != "expo" || manifest.Mode != config.Mode || manifest.PackageManager != project.PackageManager || manifest.ConfigHash != configHash || manifest.SchemaHash != schemaDigest {
 		return errors.New("generated plan metadata or config/schema hash is stale; run `attribution plan` and `attribution apply`")
 	}
-	if project.BundleID != config.App.BundleID || manifest.AppConfig.Path != "app.json" || manifest.AppConfig.Plugin != "./"+PluginPath {
+	if project.BundleID != config.App.BundleID || manifest.AppConfig != (GeneratedAppConfig{Path: "app.json", Plugin: "./" + PluginPath}) {
 		return errors.New("generated plan does not match the current app identity or plugin registration; run `attribution apply`")
 	}
 	if err := validateSafeTarget(root, ".attribution/.gitignore"); err != nil {
@@ -297,6 +307,94 @@ func validateProbePlan(root string, config Config, configHash, schemaDigest stri
 	}
 	if !bytes.Equal(wrapper, expectedWrapper) {
 		return errors.New("generated runtime wrapper drifted from the current config; run `attribution apply`")
+	}
+	return nil
+}
+
+func validateSwiftProbePlan(project Project, config Config, configHash, schemaDigest string, manifest GeneratedManifest) error {
+	if manifest.Version != 1 || manifest.GeneratedBy != "attribution "+Version || manifest.Host != "swiftui" || manifest.Mode != config.Mode || manifest.PackageManager != "swiftpm" || manifest.ConfigHash != configHash || manifest.SchemaHash != schemaDigest {
+		return errors.New("generated SwiftUI plan metadata or config/schema hash is stale; run `attribution plan` and `attribution apply`")
+	}
+	expectedApp := GeneratedAppConfig{Path: project.SwiftUI.ProjectFile, Target: project.SwiftUI.TargetName, InfoPlist: project.SwiftUI.InfoPlistPath, GeneratedSwift: SwiftSourcePath, PackageProduct: "AttributionCore"}
+	if project.BundleID != config.App.BundleID || manifest.AppConfig != expectedApp {
+		return errors.New("generated SwiftUI plan does not match the current app identity or Xcode target binding; run `attribution apply`")
+	}
+	if err := validateSafeTarget(project.Root, ".attribution/.gitignore"); err != nil {
+		return err
+	}
+	ignoreRaw, err := os.ReadFile(filepath.Join(project.Root, ".attribution", ".gitignore"))
+	if err != nil || !bytes.Equal(ignoreRaw, []byte("last-run.json\nprobe.json\n")) {
+		return errors.New("local runtime artifacts are not in the generated ignore file; run `attribution apply`")
+	}
+	plist, err := renderSwiftPlist(config, schemaDigest)
+	if err != nil {
+		return fmt.Errorf("compile expected SwiftUI plist plan: %w", err)
+	}
+	expected := []struct {
+		path string
+		raw  []byte
+	}{
+		{SwiftSourcePath, renderSwiftSource(config, schemaDigest)},
+		{SwiftPlistPath, plist},
+		{SwiftGuidePath, renderSwiftGuide(project)},
+	}
+	if len(manifest.GeneratedFiles) != len(expected) {
+		return errors.New("generated SwiftUI plan does not bind the expected owned artifacts; run `attribution apply`")
+	}
+	for index, item := range expected {
+		if err := validateSafeTarget(project.Root, item.path); err != nil {
+			return err
+		}
+		observed, readErr := os.ReadFile(filepath.Join(project.Root, filepath.FromSlash(item.path)))
+		if readErr != nil || !bytes.Equal(observed, item.raw) || manifest.GeneratedFiles[index].Path != item.path || manifest.GeneratedFiles[index].SHA256 != sha256Hex(observed) {
+			return fmt.Errorf("generated SwiftUI artifact drifted at %s; run `attribution apply`", item.path)
+		}
+	}
+	integration := inspectSwiftUIIntegration(project)
+	if !integration.PackageLinked {
+		return errors.New(integration.PackageProblem)
+	}
+	if !integration.SourceTargeted {
+		return errors.New(integration.SourceProblem)
+	}
+	info, err := loadSwiftInfoPlist(project)
+	if err != nil {
+		return err
+	}
+	if observed, ok := info["AttributionKitSchemaHash"].(string); !ok || observed != schemaDigest {
+		return errors.New("target Info.plist schema hash does not match the generated SwiftUI plan")
+	}
+	events, ok := info["AttributionKitEventValues"].(map[string]any)
+	if !ok || len(events) != len(config.Schema.Events) {
+		return errors.New("target Info.plist event values do not match the generated SwiftUI plan")
+	}
+	for index, event := range config.Schema.Events {
+		if value, found := events[event].(int); !found || value != index {
+			return errors.New("target Info.plist event values do not match the generated SwiftUI plan")
+		}
+	}
+	expectedEndpoint, _ := normalizedEndpoint(config.Providers.Apple.Endpoint)
+	if observed, ok := info["NSAdvertisingAttributionReportEndpoint"].(string); !ok || observed != expectedEndpoint {
+		return errors.New("target Info.plist endpoint does not match the generated SwiftUI plan")
+	}
+	if len(config.Providers.Apple.SKAdNetworkIDs) > 0 {
+		items, ok := info["SKAdNetworkItems"].([]any)
+		if !ok {
+			return errors.New("target Info.plist SKAdNetworkItems do not match the generated SwiftUI plan")
+		}
+		observedIDs := map[string]bool{}
+		for _, item := range items {
+			if entry, ok := item.(map[string]any); ok {
+				if id, ok := entry["SKAdNetworkIdentifier"].(string); ok {
+					observedIDs[id] = true
+				}
+			}
+		}
+		for _, id := range config.Providers.Apple.SKAdNetworkIDs {
+			if !observedIDs[id] {
+				return errors.New("target Info.plist SKAdNetworkItems do not match the generated SwiftUI plan")
+			}
+		}
 	}
 	return nil
 }
@@ -538,6 +636,9 @@ func validateStoredProbe(artifact RuntimeProbeArtifact, obs observation, now tim
 	}
 	if artifact.Framework != "expo" && artifact.Framework != "swiftui" {
 		return errors.New("probe artifact framework is invalid")
+	}
+	if obs.project.Host != artifact.Framework {
+		return errors.New("probe artifact framework does not match the current project host")
 	}
 	if artifact.Target != "simulator" {
 		return errors.New("probe artifact target is not simulator")

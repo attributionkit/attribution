@@ -2,40 +2,86 @@
 
 > Client-preview exercise only: `https://attribution.sh/` is not receiving Apple postbacks yet. Do not ship this endpoint in a production app.
 
-## 1. Add the source package
+The native host flow ships in `v0.1.0-preview.4`. Install the release CLI before opening the fresh app:
 
-Create an iOS SwiftUI app with Xcode 15 or newer (Swift tools 5.9+). Choose **File → Add Package Dependencies**, enter `https://github.com/attributionkit/attribution`, select the release version, and add the `AttributionCore` product to the app target. During local development, add the repository root as a local package; the root `Package.swift` vends the same product.
-
-For CocoaPods, consume the root podspec from the same immutable tag:
-
-```ruby
-pod 'AttributionCore', :git => 'https://github.com/attributionkit/attribution.git', :tag => 'v0.1.0-preview.3'
+```sh
+go install github.com/attributionkit/attribution/cmd/attribution@v0.1.0-preview.4
 ```
 
-## 2. Add compiled plan values
+## 1. Create and initialize the host
 
-Add these values to the app target's Info.plist/build configuration:
+Create an iOS SwiftUI app with Xcode 15 or newer, close Xcode, and run the CLI from the directory containing the new `.xcodeproj`:
 
-- `NSAdvertisingAttributionReportEndpoint`: `https://attribution.sh/` (preview wiring only; inactive)
-- `SKAdNetworkItems`: an array of dictionaries with `SKAdNetworkIdentifier`
-- `AttributionKitSchemaHash`: the SHA-256 plan hash
-- `AttributionKitEventValues`: a dictionary such as `install = 0`, `trial = 1`, `purchase = 2`, `retention = 3`
+```sh
+attribution verify --json   # honest day-zero failures
+attribution init
+```
 
-Use [examples/swiftui/ContentView.swift](../examples/swiftui/ContentView.swift) as the minimal call site. `AttributionConfiguration.fromBundle()` validates the compiled values before any Apple call.
+Native discovery is intentionally strict. The directory must contain exactly one non-symlink `.xcodeproj` and exactly one iOS application target. Every target configuration must use the same literal `PRODUCT_BUNDLE_IDENTIFIER`; build-setting variables and ambiguous targets are rejected rather than guessed.
 
-The example encodes the returned `AttributionUpdateReport` as one exact JSON line, prints it, and renders selectable text. Save only that JSON object to a fresh file. From the configured project checkout whose `.attribution/config.yaml` and generated `.attribution/manifest.json` supplied the same schema plan, import it within 15 minutes:
+Review `.attribution/config.yaml`, including every public SKAdNetwork identifier. Then generate the owned native plan:
+
+```sh
+attribution plan
+attribution apply --branch
+attribution apply           # must report no diff
+```
+
+`apply` writes only `.attribution` artifacts. It never edits `project.pbxproj`, the app source, or the app's Info.plist.
+
+## 2. Make the Xcode integration explicit
+
+Follow the generated `.attribution/swift/README.md` exactly:
+
+1. Add `https://github.com/attributionkit/attribution` as a Swift package and link its `AttributionCore` product to the discovered application target.
+2. Add `.attribution/swift/AttributionKit.generated.swift` to that target's **Compile Sources** build phase without copying or renaming it.
+3. Use one explicit, project-relative XML `INFOPLIST_FILE` for every target configuration. Copy the four attribution keys from `.attribution/swift/AttributionKit-Info.plist` into the real target Info.plist while preserving unrelated app keys.
+
+The CLI does not accept a generated or variable-resolved Info.plist for this flow because nested dictionaries and arrays cannot be verified safely from those settings. The copied keys are:
+
+- `NSAdvertisingAttributionReportEndpoint`
+- `SKAdNetworkItems`
+- `AttributionKitSchemaHash`
+- `AttributionKitEventValues`
+
+Now run:
+
+```sh
+attribution verify --json
+```
+
+Generated artifacts alone do not pass. Verification separately requires `swiftui.package-linked`, `swiftui.generated-source-targeted`, and `swiftui.info-plist-plan` to observe the real target declaration. It also checks the bundle ID, endpoint, SKAdNetwork identifiers, exact event/value map, and every generated hash.
+
+## 3. Call and probe the runtime
+
+Use [examples/swiftui/ContentView.swift](../examples/swiftui/ContentView.swift) as the minimal call site. It calls the generated plan, which re-reads and compares the compiled Bundle values before invoking `AttributionCore`:
+
+```swift
+let report = try await AttributionKitGeneratedPlan.record("install")
+```
+
+Build and run the actual app in an iOS simulator. Save only the exact one-line `AttributionUpdateReport` JSON emitted by the app to a fresh regular file, then import it within 15 minutes:
 
 ```sh
 attribution probe import \
   --framework swiftui \
   --target simulator \
-  --report /path/to/runtime-report.json \
-  --project /path/to/configured-project
-attribution verify --json --project /path/to/configured-project
+  --report /path/to/runtime-report.json
+attribution verify --json
 ```
 
-`--framework swiftui` records unsigned source provenance; the report itself has no framework field, so it is not a cryptographic framework attestation. The importer independently requires exact event/value/schema agreement with the current config and generated plan, rejects stale or malformed input, redacts backend error text from its local artifact, and can pass only Your Logic.
+The importer requires a `swiftui` generated host manifest and revalidates package linkage, source target membership, the real Info.plist, and all generated bytes before accepting the unsigned copy. `--framework expo` is rejected for this host. A valid simulator import can pass only Your Logic; Device and Production remain unknown.
 
-## 3. Interpret the result honestly
+## 4. Connect the coding agent
 
-The simulator proves that the package links, the compiled plan is readable, the UI reaches the native runtime, and each Apple backend returns an observable result. It cannot produce a real SKAdNetwork or AdAttributionKit postback. Device-lab and production rows therefore remain pending.
+After the local run manifest is current:
+
+```sh
+attribution connect                 # human approves in the browser
+attribution runs upload
+attribution ping                    # connectivity only
+attribution live-check --json
+attribution agent setup --host codex
+```
+
+Start a new Codex session in this project to use the four no-input, project-bound tools. The application token remains in macOS Keychain. Neither a ping nor a simulator report is Apple, Device, or Production evidence.

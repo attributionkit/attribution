@@ -1,19 +1,19 @@
 ---
 name: attributionkit-verify
-description: Configure, probe, connect, and independently verify AttributionKit in Expo iOS apps without overstating simulator or production evidence.
+description: Configure, probe, connect, and independently verify AttributionKit in Expo or native SwiftUI iOS apps without overstating simulator or production evidence.
 license: Apache-2.0
 ---
 
 # AttributionKit setup and verification
 
 1. Create tasks named Config, Build, Your Logic, Device, and Production.
-2. Confirm `expo.ios.bundleIdentifier` is explicit and the tree is understood.
+2. Identify the host. For Expo, confirm `expo.ios.bundleIdentifier` is explicit. For SwiftUI, require exactly one non-symlink `.xcodeproj`, one application target, and literal consistent bundle/Info.plist settings. Never guess an ambiguous target or resolve build-setting variables.
 3. Run `attribution verify --json` before setup. A missing config is a valid day-zero finding.
 4. Run `attribution init`, ask the user to review public provider IDs, then run `attribution plan`.
 5. Apply only after the plan is understood. Preserve unrelated dirty work.
 6. Run `attribution apply` a second time and require no diff.
-7. Run `npx expo prebuild --clean --platform ios`, build the generated app, and invoke a configured event in the simulator. Save the exact one-line `AttributionUpdateReport` JSON emitted by the example; do not synthesize or edit it.
-8. Within 15 minutes run `attribution probe import --framework expo --target simulator --report <path>`. For a SwiftUI consumer report use `--framework swiftui` and point `--project` at the checkout holding the matching current config/generated plan. Never use this import path for a device or Production claim.
+7. Complete the host integration. For Expo, run `npx expo prebuild --clean --platform ios`. For SwiftUI, follow `.attribution/swift/README.md`: link the official `AttributionCore` package product, target the exact generated Swift file, and copy the generated keys into the real explicit target Info.plist. Require all three SwiftUI integration checks to pass; generated artifacts alone are not proof.
+8. Build the actual app and invoke a configured event in the simulator. Save the exact one-line `AttributionUpdateReport` JSON emitted by the example; do not synthesize or edit it. Within 15 minutes run `attribution probe import --framework <expo|swiftui> --target simulator --report <path>` using the framework that matches the generated host manifest. Never use this import path for a device or Production claim.
 9. Run `attribution verify --json` again. Update task state only from the event stream and final manifest. A valid imported report may pass only `runtime.report-imported` under Your Logic; confirm Device and Production remain unknown.
 10. Run `attribution connect`. Open the returned browser URL, but pause for the human to approve authorization and never enter, read, or relay their credentials. Confirm that only the non-secret `.attribution/cloud.json` binding was written; the token belongs in the OS keychain. Initial authorization is never an MCP tool call.
 11. Choose one authenticated post-connect transport:

@@ -63,6 +63,164 @@ schema:
 `
 }
 
+func validSwiftConfigYAML() string {
+	return `version: 1
+mode: managed
+app:
+  bundleId: sh.attribution.fixture
+conversionAuthority:
+  owner: managed-runtime
+eventTransports: []
+providers:
+  apple:
+    endpoint: https://attribution.sh
+    skAdNetworkIds:
+      - cstr6suwn9.skadnetwork
+schema:
+  events:
+    - install
+    - trial
+    - purchase
+    - retention
+`
+}
+
+type swiftFixtureOptions struct {
+	packageLinked  bool
+	sourceTargeted bool
+	explicitPlist  bool
+	variableBundle bool
+	variablePlist  bool
+}
+
+func newSwiftUIFixture(t *testing.T, options swiftFixtureOptions) string {
+	t.Helper()
+	root := t.TempDir()
+	bundle := "sh.attribution.fixture"
+	if options.variableBundle {
+		bundle = "$(APP_BUNDLE_ID)"
+	}
+	infoSettings := "GENERATE_INFOPLIST_FILE = YES;"
+	if options.explicitPlist {
+		infoPath := "Fixture/Info.plist"
+		if options.variablePlist {
+			infoPath = "$(SRCROOT)/Fixture/Info.plist"
+		}
+		infoSettings = "GENERATE_INFOPLIST_FILE = NO;\n\t\t\t\tINFOPLIST_FILE = " + infoPath + ";"
+	}
+	packageDependencies := ""
+	packageObjects := ""
+	frameworkBuildFile := ""
+	if options.packageLinked {
+		packageDependencies = "11111111111111111111110A /* AttributionCore */ ,"
+		frameworkBuildFile = "11111111111111111111110D /* AttributionCore in Frameworks */ ,"
+		packageObjects = `
+		11111111111111111111110D /* AttributionCore in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = 11111111111111111111110A /* AttributionCore */;
+		};
+		11111111111111111111110A /* AttributionCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 11111111111111111111110B /* XCRemoteSwiftPackageReference \"attribution\" */;
+			productName = AttributionCore;
+		};
+		11111111111111111111110B /* XCRemoteSwiftPackageReference \"attribution\" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/attributionkit/attribution";
+			requirement = { kind = upToNextMajorVersion; minimumVersion = 0.1.0; };
+		};`
+	}
+	sourceBuildFile := ""
+	sourceObjects := ""
+	groupChildren := ""
+	if options.sourceTargeted {
+		sourceBuildFile = "111111111111111111111108 /* AttributionKit.generated.swift in Sources */ ,"
+		groupChildren = "111111111111111111111109 /* AttributionKit.generated.swift */ ,"
+		sourceObjects = `
+		111111111111111111111108 /* AttributionKit.generated.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = 111111111111111111111109 /* AttributionKit.generated.swift */;
+		};
+		111111111111111111111109 /* AttributionKit.generated.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = ".attribution/swift/AttributionKit.generated.swift";
+			sourceTree = "<group>";
+		};`
+	}
+	pbx := `// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	objectVersion = 60;
+	objects = {
+		111111111111111111111101 /* Project object */ = {
+			isa = PBXProject;
+			mainGroup = 111111111111111111111102;
+			packageReferences = (11111111111111111111110B,);
+			targets = (111111111111111111111103,);
+		};
+		111111111111111111111102 = {
+			isa = PBXGroup;
+			children = (` + groupChildren + `);
+			sourceTree = "<group>";
+		};
+		111111111111111111111103 /* Fixture */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 111111111111111111111104;
+			buildPhases = (111111111111111111111107, 11111111111111111111110C,);
+			name = Fixture;
+			packageProductDependencies = (` + packageDependencies + `);
+			productType = "com.apple.product-type.application";
+		};
+		111111111111111111111104 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (111111111111111111111105, 111111111111111111111106,);
+		};
+		111111111111111111111105 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = ` + bundle + `;
+				` + infoSettings + `
+			};
+			name = Debug;
+		};
+		111111111111111111111106 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = ` + bundle + `;
+				` + infoSettings + `
+			};
+			name = Release;
+		};
+		111111111111111111111107 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (` + sourceBuildFile + `);
+		};
+		11111111111111111111110C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (` + frameworkBuildFile + `);
+		};` + sourceObjects + packageObjects + `
+	};
+	rootObject = 111111111111111111111101;
+}
+`
+	writeFixture(t, root, "Fixture.xcodeproj/project.pbxproj", pbx)
+	writeFixture(t, root, "Fixture/ContentView.swift", "import SwiftUI\nstruct ContentView: View { var body: some View { Text(\"Fixture\") } }\n")
+	writeFixture(t, root, ConfigPath, validSwiftConfigYAML())
+	if options.explicitPlist && !options.variablePlist {
+		config, err := ParseConfig([]byte(validSwiftConfigYAML()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		plist, err := renderSwiftPlist(config, schemaHash(config))
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeFixture(t, root, "Fixture/Info.plist", string(plist))
+	}
+	return root
+}
+
 func writeFixture(t *testing.T, root, relative, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(relative))

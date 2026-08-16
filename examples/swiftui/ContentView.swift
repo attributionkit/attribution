@@ -17,7 +17,7 @@ struct ContentView: View {
             Button("Record Install") {
                 Task {
                     do {
-                        let report = try await AttributionCore.record("install")
+                        let report = try await AttributionKitGeneratedPlan.record("install")
                         status = "AAK \(report.adAttributionKit.status.rawValue) · SKAN \(report.skAdNetwork.status.rawValue)"
                         let data = try JSONEncoder().encode(report)
                         guard let json = String(data: data, encoding: .utf8) else {

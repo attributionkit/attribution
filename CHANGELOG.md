@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.0-preview.4 - 2026-08-16
+
+- Added first-class native SwiftUI host discovery and deterministic `init`/`plan`/`apply` support without an Expo stand-in or automatic `project.pbxproj` mutation.
+- Added fail-closed Xcode verification for official `AttributionCore` target linkage, exact generated Swift source membership, literal bundle/Info.plist settings, and target-declared endpoint/SKAN/schema/event values.
+- Bound runtime probe imports to the generated host framework so an Expo plan cannot be labeled SwiftUI (or vice versa); simulator evidence still affects only Your Logic.
+
 ## 0.1.0-preview.3 - 2026-08-16
 
 - Added `attribution agent setup --host codex` and a project-bound stdio MCP server whose name and Keychain account are bound to the canonical API, organization, application, and bundle identity without placing credentials in MCP configuration, arguments, results, or conversation context.

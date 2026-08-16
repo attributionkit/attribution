@@ -16,11 +16,40 @@ import (
 
 type Project struct {
 	Root           string
+	Host           string
 	PackageManager string
 	Dependencies   map[string]string
 	PackageJSON    map[string]any
 	AppJSON        map[string]any
 	BundleID       string
+	SwiftUI        *SwiftUIProject
+}
+
+func DiscoverProject(root string) (Project, error) {
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return Project{}, fmt.Errorf("resolve project path: %w", err)
+	}
+	entries, err := os.ReadDir(absolute)
+	if err != nil {
+		return Project{}, &UnsupportedProjectError{Shape: "project path is not a directory"}
+	}
+	var xcodeProjects []string
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".xcodeproj") {
+			xcodeProjects = append(xcodeProjects, entry.Name())
+		}
+	}
+	_, packageErr := os.Lstat(filepath.Join(absolute, "package.json"))
+	_, appErr := os.Lstat(filepath.Join(absolute, "app.json"))
+	hasExpoShape := packageErr == nil || appErr == nil
+	if hasExpoShape && len(xcodeProjects) > 0 {
+		return Project{}, &UnsupportedProjectError{Shape: "ambiguous Expo and Xcode project roots; pass the exact host project directory"}
+	}
+	if len(xcodeProjects) > 0 {
+		return DiscoverSwiftUI(absolute)
+	}
+	return DiscoverExpo(absolute)
 }
 
 func DiscoverExpo(root string) (Project, error) {
@@ -95,6 +124,7 @@ func DiscoverExpo(root string) (Project, error) {
 	}
 	return Project{
 		Root:           absolute,
+		Host:           "expo",
 		PackageManager: manager,
 		Dependencies:   dependencies,
 		PackageJSON:    packageJSON,

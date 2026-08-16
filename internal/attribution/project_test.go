@@ -13,7 +13,7 @@ func TestDiscoverExpoDerivesPackageManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if project.PackageManager != "npm" || project.BundleID != "sh.attribution.fixture" {
+	if project.Host != "expo" || project.PackageManager != "npm" || project.BundleID != "sh.attribution.fixture" {
 		t.Fatalf("unexpected discovery: %#v", project)
 	}
 }

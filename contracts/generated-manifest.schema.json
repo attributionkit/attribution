@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attribution.sh/contracts/generated-manifest.v1.schema.json",
+  "title": "AttributionKit deterministic generated host manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "generatedBy",
+    "host",
+    "packageManager",
+    "mode",
+    "configHash",
+    "schemaHash",
+    "generatedFiles",
+    "appConfig"
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "generatedFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "expoAppConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "plugin"],
+      "properties": {
+        "path": { "const": "app.json" },
+        "plugin": { "const": "./.attribution/plugin/withAttribution.js" }
+      }
+    },
+    "swiftUIAppConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "target", "generatedSwift", "packageProduct"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[^/\\\\]+\\.xcodeproj/project\\.pbxproj$",
+          "maxLength": 1024
+        },
+        "target": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "infoPlist": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\$[({]).+\\.plist$"
+        },
+        "generatedSwift": { "const": ".attribution/swift/AttributionKit.generated.swift" },
+        "packageProduct": { "const": "AttributionCore" }
+      }
+    }
+  },
+  "properties": {
+    "version": { "const": 1 },
+    "generatedBy": { "type": "string", "pattern": "^attribution [^\\s]+$", "maxLength": 128 },
+    "host": { "enum": ["expo", "swiftui"] },
+    "packageManager": { "enum": ["npm", "yarn", "pnpm", "bun", "swiftpm"] },
+    "mode": { "enum": ["managed", "external"] },
+    "configHash": { "$ref": "#/$defs/sha256" },
+    "schemaHash": { "$ref": "#/$defs/sha256" },
+    "generatedFiles": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/generatedFile" }
+    },
+    "appConfig": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "host": { "const": "expo" } }, "required": ["host"] },
+      "then": {
+        "properties": {
+          "packageManager": { "enum": ["npm", "yarn", "pnpm", "bun"] },
+          "generatedFiles": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "prefixItems": [
+              {
+                "allOf": [
+                  { "$ref": "#/$defs/generatedFile" },
+                  { "type": "object", "properties": { "path": { "const": ".attribution/plugin/withAttribution.js" } } }
+                ]
+              }
+            ],
+            "items": false
+          },
+          "appConfig": { "$ref": "#/$defs/expoAppConfig" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "host": { "const": "swiftui" } }, "required": ["host"] },
+      "then": {
+        "properties": {
+          "packageManager": { "const": "swiftpm" },
+          "mode": { "const": "managed" },
+          "generatedFiles": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "prefixItems": [
+              {
+                "allOf": [
+                  { "$ref": "#/$defs/generatedFile" },
+                  { "type": "object", "properties": { "path": { "const": ".attribution/swift/AttributionKit.generated.swift" } } }
+                ]
+              },
+              {
+                "allOf": [
+                  { "$ref": "#/$defs/generatedFile" },
+                  { "type": "object", "properties": { "path": { "const": ".attribution/swift/AttributionKit-Info.plist" } } }
+                ]
+              },
+              {
+                "allOf": [
+                  { "$ref": "#/$defs/generatedFile" },
+                  { "type": "object", "properties": { "path": { "const": ".attribution/swift/README.md" } } }
+                ]
+              }
+            ],
+            "items": false
+          },
+          "appConfig": { "$ref": "#/$defs/swiftUIAppConfig" }
+        }
+      }
+    }
+  ]
+}

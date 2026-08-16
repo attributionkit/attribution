@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "generatedBy": "attribution 0.1.0-preview.4",
+  "host": "expo",
+  "packageManager": "npm",
+  "mode": "managed",
+  "configHash": "4cec9827000147cfb00137b862c011b9f1fbb3eea527322426041d1ab296db37",
+  "schemaHash": "3d8ac4b627c9ac1bfdbe44231ce4261f3a31eaa5f784c52f0f29d48a52481074",
+  "generatedFiles": [
+    {
+      "path": ".attribution/plugin/withAttribution.js",
+      "sha256": "4634c5d5217e1755d6ee4ec56f556b359e32ba05307b5c4a7b878ba0adb734cb"
+    }
+  ],
+  "appConfig": {
+    "path": "app.json",
+    "plugin": "./.attribution/plugin/withAttribution.js"
+  }
+}

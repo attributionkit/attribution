@@ -7,7 +7,7 @@ type UnsupportedProjectError struct {
 }
 
 func (e *UnsupportedProjectError) Error() string {
-	return fmt.Sprintf("unsupported project shape %q; supported: Expo with a static app.json. No files were modified", e.Shape)
+	return fmt.Sprintf("unsupported project shape %q; supported: Expo with a static app.json, or one top-level Xcode project with one literal iOS application target. No files were modified", e.Shape)
 }
 
 type MissingConfigError struct {
@@ -35,7 +35,7 @@ func (e *MissingExpoPackageError) Error() string {
 type MissingBundleIdentifierError struct{}
 
 func (e *MissingBundleIdentifierError) Error() string {
-	return "app.json is missing expo.ios.bundleIdentifier; set it to the app's real bundle identifier before running attribution init or apply. No files were modified"
+	return "the host is missing an explicit bundle identifier; set it to the app's real bundle identifier in expo.ios.bundleIdentifier or every Xcode target PRODUCT_BUNDLE_IDENTIFIER before running attribution init or apply. No files were modified"
 }
 
 type DirtyWorkingTreeError struct {

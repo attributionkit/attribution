@@ -93,7 +93,7 @@ func TestCLIProbeImportFeedsOnlyYourLogic(t *testing.T) {
 	}
 }
 
-func TestProbeImportAcceptsSwiftUIAsUnsignedSourceDeclaration(t *testing.T) {
+func TestProbeImportRejectsSwiftUIDeclarationForExpoPlan(t *testing.T) {
 	root := appliedFixture(t)
 	reportPath := writeExternalProbeReport(t, validRuntimeReportJSON(t, root))
 	code, _, stderr := runCLIForTest(
@@ -103,15 +103,8 @@ func TestProbeImportAcceptsSwiftUIAsUnsignedSourceDeclaration(t *testing.T) {
 		"--report", reportPath,
 		"--project", root,
 	)
-	if code != 0 || stderr != "" {
-		t.Fatalf("SwiftUI import code=%d stderr=%q", code, stderr)
-	}
-	var artifact RuntimeProbeArtifact
-	if err := json.Unmarshal(readFixture(t, root, ProbePath), &artifact); err != nil {
-		t.Fatal(err)
-	}
-	if artifact.Framework != "swiftui" || artifact.Target != "simulator" {
-		t.Fatalf("wrong source binding: %#v", artifact)
+	if code != 2 || !strings.Contains(stderr, "does not match the generated expo host plan") {
+		t.Fatalf("framework mismatch code=%d stderr=%q", code, stderr)
 	}
 }
 

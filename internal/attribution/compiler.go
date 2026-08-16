@@ -3,6 +3,7 @@ package attribution
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net/url"
@@ -34,18 +35,24 @@ type GeneratedFile struct {
 }
 
 type GeneratedManifest struct {
-	Version        int             `json:"version"`
-	GeneratedBy    string          `json:"generatedBy"`
-	Host           string          `json:"host"`
-	PackageManager string          `json:"packageManager"`
-	Mode           string          `json:"mode"`
-	ConfigHash     string          `json:"configHash"`
-	SchemaHash     string          `json:"schemaHash"`
-	GeneratedFiles []GeneratedFile `json:"generatedFiles"`
-	AppConfig      struct {
-		Path   string `json:"path"`
-		Plugin string `json:"plugin"`
-	} `json:"appConfig"`
+	Version        int                `json:"version"`
+	GeneratedBy    string             `json:"generatedBy"`
+	Host           string             `json:"host"`
+	PackageManager string             `json:"packageManager"`
+	Mode           string             `json:"mode"`
+	ConfigHash     string             `json:"configHash"`
+	SchemaHash     string             `json:"schemaHash"`
+	GeneratedFiles []GeneratedFile    `json:"generatedFiles"`
+	AppConfig      GeneratedAppConfig `json:"appConfig"`
+}
+
+type GeneratedAppConfig struct {
+	Path           string `json:"path"`
+	Plugin         string `json:"plugin,omitempty"`
+	Target         string `json:"target,omitempty"`
+	InfoPlist      string `json:"infoPlist,omitempty"`
+	GeneratedSwift string `json:"generatedSwift,omitempty"`
+	PackageProduct string `json:"packageProduct,omitempty"`
 }
 
 type ApplyResult struct {
@@ -55,6 +62,7 @@ type ApplyResult struct {
 
 type InitResult struct {
 	Path            string
+	Host            string
 	Mode            string
 	PackageManager  string
 	InstallCommand  string
@@ -62,7 +70,7 @@ type InitResult struct {
 }
 
 func Init(root string) (InitResult, error) {
-	project, err := DiscoverExpo(root)
+	project, err := DiscoverProject(root)
 	if err != nil {
 		return InitResult{}, err
 	}
@@ -80,15 +88,17 @@ func Init(root string) (InitResult, error) {
 	owner := "managed-runtime"
 	externalName := ""
 	transports := []string{}
-	for _, manager := range installedManagers(project) {
-		if manager.Disableable {
-			transports = append(transports, manager.Package)
-			continue
-		}
-		if mode == "managed" {
-			mode = "external"
-			owner = manager.Name
-			externalName = manager.Name
+	if project.Host == "expo" {
+		for _, manager := range installedManagers(project) {
+			if manager.Disableable {
+				transports = append(transports, manager.Package)
+				continue
+			}
+			if mode == "managed" {
+				mode = "external"
+				owner = manager.Name
+				externalName = manager.Name
+			}
 		}
 	}
 	sort.Strings(transports)
@@ -120,16 +130,22 @@ func Init(root string) (InitResult, error) {
 		"    # Add only the SKAdNetwork ids for ad networks you use:",
 		"    skAdNetworkIds: []",
 	)
-	if _, hasMeta := project.Dependencies["react-native-fbsdk-next"]; hasMeta {
-		lines = append(lines,
-			"  # Meta SDK detected. Uncomment only after replacing the placeholder with the real numeric app id:",
-			"  # meta:",
-			"  #   appId: \"<replace-with-real-meta-app-id>\"",
-		)
+	if project.Host == "expo" {
+		if _, hasMeta := project.Dependencies["react-native-fbsdk-next"]; hasMeta {
+			lines = append(lines,
+				"  # Meta SDK detected. Uncomment only after replacing the placeholder with the real numeric app id:",
+				"  # meta:",
+				"  #   appId: \"<replace-with-real-meta-app-id>\"",
+			)
+		} else {
+			lines = append(lines,
+				"  # meta:",
+				"  #   appId: \"<replace-with-real-meta-app-id>\"",
+			)
+		}
 	} else {
 		lines = append(lines,
-			"  # meta:",
-			"  #   appId: \"<replace-with-real-meta-app-id>\"",
+			"  # Native provider SDKs remain human-owned; this preview compiles only Apple settings.",
 		)
 	}
 	lines = append(lines,
@@ -146,11 +162,19 @@ func Init(root string) (InitResult, error) {
 	}
 	return InitResult{
 		Path:            ConfigPath,
+		Host:            project.Host,
 		Mode:            mode,
 		PackageManager:  project.PackageManager,
-		InstallCommand:  installCommand(project.PackageManager),
+		InstallCommand:  installCommandForProject(project),
 		ExternalManager: externalName,
 	}, nil
+}
+
+func installCommandForProject(project Project) string {
+	if project.Host == "swiftui" {
+		return "In Xcode, add " + AttributionRepo + " and link the AttributionCore product to target " + project.SwiftUI.TargetName + "."
+	}
+	return installCommand(project.PackageManager)
 }
 
 func quoteYAML(value string) string {
@@ -173,14 +197,22 @@ func installCommand(manager string) string {
 }
 
 func BuildPlan(root string) (Plan, error) {
+	project, err := DiscoverProject(root)
+	if err != nil {
+		return Plan{}, err
+	}
+	if project.Host == "swiftui" {
+		return buildSwiftUIPlan(project)
+	}
+	return buildExpoPlan(project)
+}
+
+func buildExpoPlan(project Project) (Plan, error) {
+	root := project.Root
 	for _, path := range []string{"app.json", ConfigPath, ".attribution/.gitignore", PluginPath, ManifestPath} {
 		if err := validateSafeTarget(root, path); err != nil {
 			return Plan{}, err
 		}
-	}
-	project, err := DiscoverExpo(root)
-	if err != nil {
-		return Plan{}, err
 	}
 	config, rawConfig, err := ReadConfig(project.Root)
 	if err != nil {
@@ -266,6 +298,190 @@ func BuildPlan(root string) (Plan, error) {
 		}
 	}
 	return plan, nil
+}
+
+func buildSwiftUIPlan(project Project) (Plan, error) {
+	for _, path := range []string{ConfigPath, ".attribution/.gitignore", SwiftSourcePath, SwiftPlistPath, SwiftGuidePath, ManifestPath, project.SwiftUI.ProjectFile} {
+		if err := validateSafeTarget(project.Root, path); err != nil {
+			return Plan{}, err
+		}
+	}
+	config, rawConfig, err := ReadConfig(project.Root)
+	if err != nil {
+		return Plan{}, err
+	}
+	if config.App.BundleID != project.BundleID {
+		return Plan{}, &ConfigValidationError{Problems: []string{fmt.Sprintf("app.bundleId %q does not match Xcode target PRODUCT_BUNDLE_IDENTIFIER %q", config.App.BundleID, project.BundleID)}}
+	}
+	if config.Mode != "managed" || config.ConversionAuthority.Owner != "managed-runtime" {
+		return Plan{}, &ConfigValidationError{Problems: []string{"SwiftUI preview setup supports only managed mode with conversionAuthority.owner managed-runtime; native third-party conversion managers remain human-owned"}}
+	}
+	if config.Providers.Meta != nil {
+		return Plan{}, &ConfigValidationError{Problems: []string{"providers.meta is not compiled for SwiftUI hosts in this preview; configure native provider SDKs independently"}}
+	}
+
+	configDigest := sha256Hex(rawConfig)
+	schemaDigest := schemaHash(config)
+	source := renderSwiftSource(config, schemaDigest)
+	plist, err := renderSwiftPlist(config, schemaDigest)
+	if err != nil {
+		return Plan{}, err
+	}
+	guide := renderSwiftGuide(project)
+	manifest := GeneratedManifest{
+		Version:        1,
+		GeneratedBy:    "attribution " + Version,
+		Host:           "swiftui",
+		PackageManager: "swiftpm",
+		Mode:           config.Mode,
+		ConfigHash:     configDigest,
+		SchemaHash:     schemaDigest,
+		GeneratedFiles: []GeneratedFile{
+			{Path: SwiftSourcePath, SHA256: sha256Hex(source)},
+			{Path: SwiftPlistPath, SHA256: sha256Hex(plist)},
+			{Path: SwiftGuidePath, SHA256: sha256Hex(guide)},
+		},
+		AppConfig: GeneratedAppConfig{
+			Path:           project.SwiftUI.ProjectFile,
+			Target:         project.SwiftUI.TargetName,
+			InfoPlist:      project.SwiftUI.InfoPlistPath,
+			GeneratedSwift: SwiftSourcePath,
+			PackageProduct: "AttributionCore",
+		},
+	}
+	manifestRaw, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return Plan{}, fmt.Errorf("encode manifest: %w", err)
+	}
+	manifestRaw = append(manifestRaw, '\n')
+	operations := []Operation{
+		{Path: ".attribution/.gitignore", Content: []byte("last-run.json\nprobe.json\n")},
+		{Path: SwiftSourcePath, Content: source},
+		{Path: SwiftPlistPath, Content: plist},
+		{Path: SwiftGuidePath, Content: guide},
+		{Path: ManifestPath, Content: manifestRaw},
+	}
+	plan := Plan{Project: project, Config: config, ConfigHash: configDigest, SchemaHash: schemaDigest, Operations: operations}
+	for _, operation := range operations {
+		current, readErr := os.ReadFile(filepath.Join(project.Root, filepath.FromSlash(operation.Path)))
+		if readErr == nil && bytes.Equal(current, operation.Content) {
+			plan.SyncedPaths = append(plan.SyncedPaths, operation.Path)
+		} else if readErr == nil || errors.Is(readErr, os.ErrNotExist) {
+			plan.ChangedPaths = append(plan.ChangedPaths, operation.Path)
+		} else {
+			return Plan{}, fmt.Errorf("inspect planned target %s: %w", operation.Path, readErr)
+		}
+	}
+	return plan, nil
+}
+
+func renderSwiftSource(config Config, schemaDigest string) []byte {
+	var eventPairs []string
+	for index, event := range config.Schema.Events {
+		eventPairs = append(eventPairs, fmt.Sprintf("        %s: %d", quoteSwift(event), index))
+	}
+	source := `// Generated by attribution — do not edit. Regenerate with ` + "`attribution apply`" + `.
+import AttributionCore
+import Foundation
+
+enum AttributionKitGeneratedPlan {
+    static let schemaHash = ` + quoteSwift(schemaDigest) + `
+    static let eventValues: [String: Int] = [
+` + strings.Join(eventPairs, ",\n") + `
+    ]
+
+    static func configuration(bundle: Bundle = .main) throws -> AttributionConfiguration {
+        let observed = try AttributionConfiguration.fromBundle(bundle)
+        guard observed.schemaHash == schemaHash, observed.eventValues == eventValues else {
+            throw AttributionCoreError.invalidBundleConfiguration("generated-plan")
+        }
+        return observed
+    }
+
+    static func record(_ event: String, bundle: Bundle = .main) async throws -> AttributionUpdateReport {
+        try await AttributionCore.record(event, configuration: configuration(bundle: bundle))
+    }
+}
+`
+	return []byte(source)
+}
+
+func quoteSwift(value string) string {
+	raw, _ := json.Marshal(value)
+	return string(raw)
+}
+
+func renderSwiftPlist(config Config, schemaDigest string) ([]byte, error) {
+	endpoint, err := normalizedEndpoint(config.Providers.Apple.Endpoint)
+	if err != nil {
+		return nil, err
+	}
+	var body strings.Builder
+	body.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSAdvertisingAttributionReportEndpoint</key>
+  <string>`)
+	body.WriteString(escapeXML(endpoint))
+	body.WriteString(`</string>
+  <key>SKAdNetworkItems</key>
+  <array>
+`)
+	for _, id := range config.Providers.Apple.SKAdNetworkIDs {
+		body.WriteString("    <dict>\n      <key>SKAdNetworkIdentifier</key>\n      <string>")
+		body.WriteString(escapeXML(id))
+		body.WriteString("</string>\n    </dict>\n")
+	}
+	body.WriteString(`  </array>
+  <key>AttributionKitSchemaHash</key>
+  <string>`)
+	body.WriteString(schemaDigest)
+	body.WriteString(`</string>
+  <key>AttributionKitEventValues</key>
+  <dict>
+`)
+	for index, event := range config.Schema.Events {
+		body.WriteString("    <key>")
+		body.WriteString(escapeXML(event))
+		body.WriteString("</key>\n    <integer>")
+		body.WriteString(fmt.Sprintf("%d", index))
+		body.WriteString("</integer>\n")
+	}
+	body.WriteString("  </dict>\n</dict>\n</plist>\n")
+	return []byte(body.String()), nil
+}
+
+func escapeXML(value string) string {
+	var output bytes.Buffer
+	_ = xml.EscapeText(&output, []byte(value))
+	return output.String()
+}
+
+func normalizedEndpoint(value string) (string, error) {
+	endpoint, err := url.Parse(value)
+	if err != nil {
+		return "", err
+	}
+	endpoint.Path = "/"
+	endpoint.RawPath = ""
+	endpoint.RawQuery = ""
+	endpoint.Fragment = ""
+	return endpoint.String(), nil
+}
+
+func renderSwiftGuide(project Project) []byte {
+	infoInstruction := "Create an explicit project-relative Info.plist for every target configuration and copy the four generated keys from `" + SwiftPlistPath + "`."
+	if project.SwiftUI.InfoPlistPath != "" {
+		infoInstruction = "Copy the four generated keys from `" + SwiftPlistPath + "` into `" + project.SwiftUI.InfoPlistPath + "` without removing unrelated app keys."
+	}
+	return []byte("# AttributionKit Xcode integration (generated)\n\n" +
+		"Target: `" + project.SwiftUI.TargetName + "` in `" + project.SwiftUI.XcodeProject + "`\n\n" +
+		"1. Add `" + AttributionRepo + "` as a Swift package and link product `AttributionCore` to this application target.\n" +
+		"2. Add `" + SwiftSourcePath + "` to this target's Sources build phase. Do not copy or rename it.\n" +
+		"3. " + infoInstruction + "\n" +
+		"4. Call `AttributionKitGeneratedPlan.record(\"install\")` from the app.\n" +
+		"5. Run `attribution verify --json`; generated files alone are intentionally insufficient.\n")
 }
 
 func renderWrapper(config Config, schemaDigest string) ([]byte, error) {

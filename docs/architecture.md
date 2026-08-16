@@ -6,7 +6,7 @@ This repository is the public client and semantics plane described by the correc
 customer repository
   attribution Go CLI
        ├─ Expo config plugin + Swift Expo module
-       └─ SwiftPM/CocoaPods AttributionCore
+       └─ Xcode host plan + SwiftPM/CocoaPods AttributionCore
   public schemas, rules, vectors, and contracts
 
 Apple → attribution.sh Function → private Blob → Vercel Workflow
@@ -26,6 +26,9 @@ The lower cloud path is a separate private repository and deployment boundary. I
 6. Simulator results never claim an Apple protocol round trip.
 7. Generated changes are deterministic; unsupported shapes fail before mutation.
 8. Imported simulator reports are strict, SHA-256-bound local copies with a 15-minute lifetime. They may pass only Your Logic and remain `copy_observed_unsigned`.
+9. Native generated files are not integration evidence by themselves. SwiftUI verification observes the application target's package product, Sources build phase, and explicit target Info.plist without mutating those human-owned files.
+
+The Expo and SwiftUI variants of `.attribution/manifest.json` are published in [`contracts/generated-manifest.schema.json`](../contracts/generated-manifest.schema.json). The host discriminator fixes the allowed package manager, generated-file set, and app-target binding; it is also the source-framework binding for simulator probe imports.
 
 ## Release boundary
 

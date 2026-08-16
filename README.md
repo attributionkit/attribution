@@ -7,13 +7,16 @@ AttributionKit is an auditable attribution configuration compiler and Apple conv
 - a local-only, expiring simulator-report importer that makes Your Logic agent-visible without promoting it to Device or Production;
 - `AttributionCore`, a SwiftPM/CocoaPods runtime shared by native apps;
 - `@attributionkit/expo`, an Expo Modules API bridge and config plugin;
+- a native Xcode host compiler that generates owned Swift/plist guidance and verifies the real target declaration without rewriting `project.pbxproj`;
 - versioned schemas, hosted-client contracts, rules, comparison-contract definitions, and golden vectors.
+
+The generated host manifest has a published Expo/SwiftUI discriminator in [`contracts/generated-manifest.schema.json`](contracts/generated-manifest.schema.json); cross-host artifacts and probe framework labels are rejected.
 
 The runtime contains no identifiers, event stream, or network client. It maps a declared typed event to a fine conversion value, then updates AdAttributionKit and SKAdNetwork independently through one semantic owner. Apple API results remain separate and errors are returned instead of discarded.
 
 ## Status
 
-`v0.1.0-preview.3` is the current **client preview** candidate. Setup and static verification work fully offline. Simulator calls prove app wiring and business-logic routing only; Apple postbacks require supported physical-device or production evidence and remain `unknown` until that evidence exists.
+`v0.1.0-preview.4` is the current **client preview** candidate. Setup and static verification work fully offline. Simulator calls prove app wiring and business-logic routing only; Apple postbacks require supported physical-device or production evidence and remain `unknown` until that evidence exists.
 
 **Do not ship the preview's `https://attribution.sh/` endpoint in a production app.** The receiver is not claimed by the current preview release. The public repository now defines an explicit hosted CLI client and its OpenAPI/MCP contracts, while the Vercel Blob → Workflow → PlanetScale → WorkOS implementation remains a separate private cloud system. This source change alone is not deployment evidence.
 
@@ -30,10 +33,28 @@ go install github.com/attributionkit/attribution/cmd/attribution@latest
 Release archives, third-party notices, and SHA-256 checksums are attached to each GitHub release. The Expo package is attached as an npm tarball until npm trusted publishing is activated:
 
 ```sh
-npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.3/attributionkit-expo-0.1.0-preview.3.tgz
+npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.4/attributionkit-expo-0.1.0-preview.4.tgz
 ```
 
 For native apps, add `https://github.com/attributionkit/attribution` in Xcode and select the root package's `AttributionCore` product as documented in [the SwiftUI guide](docs/swiftui-quickstart.md). A root podspec is also included for CocoaPods consumers.
+
+## SwiftUI quick start
+
+`v0.1.0-preview.4` includes the first-class native CLI flow. Install that CLI, then run from a fresh Xcode SwiftUI app directory:
+
+```sh
+go install github.com/attributionkit/attribution/cmd/attribution@v0.1.0-preview.4
+attribution init
+attribution plan
+attribution apply --branch
+# Follow .attribution/swift/README.md in Xcode, then:
+attribution verify --json
+# Run the real app and save its exact report JSON:
+attribution probe import --framework swiftui --target simulator --report /path/to/runtime-report.json
+attribution verify --json
+```
+
+The native verifier requires the official Swift package product, generated source target membership, and exact values in an explicit target Info.plist. Merely generating `.attribution` files cannot produce a green build/config result. Continue with the same `connect` → exact upload → ping → live-check → optional agent setup flow described below.
 
 ## Expo quick start
 
@@ -42,7 +63,7 @@ npx create-expo-app@latest my-app --template blank-typescript
 cd my-app
 # Preview only: do not ship the inactive attribution.sh endpoint to production.
 # Set expo.ios.bundleIdentifier in app.json first.
-npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.3/attributionkit-expo-0.1.0-preview.3.tgz
+npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.4/attributionkit-expo-0.1.0-preview.4.tgz
 attribution init
 # Review .attribution/config.yaml, then:
 attribution plan
@@ -64,7 +85,7 @@ permissions:
   contents: read
   attestations: read
 steps:
-  - uses: attributionkit/attribution/action@v0.1.0-preview.3
+  - uses: attributionkit/attribution/action@v0.1.0-preview.4
 ```
 
 ## Repository map

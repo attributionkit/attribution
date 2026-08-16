@@ -65,12 +65,12 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return renderCLIError(err, stderr)
 		}
-		fmt.Fprintf(stdout, "Created %s (mode: %s; package manager: %s).\n", created.Path, created.Mode, created.PackageManager)
+		fmt.Fprintf(stdout, "Created %s (host: %s; mode: %s; package manager: %s).\n", created.Path, created.Host, created.Mode, created.PackageManager)
 		if created.ExternalManager != "" {
 			fmt.Fprintf(stdout, "%s remains the external conversion authority.\n", created.ExternalManager)
 		}
 		fmt.Fprintln(stdout, "WARNING: client preview only; https://attribution.sh/ is not receiving postbacks. Do not ship it to production.")
-		fmt.Fprintln(stdout, "Review the desired state, then install the public Expo runtime and apply:")
+		fmt.Fprintln(stdout, "Review the desired state, then install/link the public runtime and apply:")
 		fmt.Fprintln(stdout, "  "+created.InstallCommand)
 		fmt.Fprintln(stdout, "  attribution apply --branch")
 		fmt.Fprintln(stdout, "Use plain `attribution apply` after committing intended dependency/config changes.")
@@ -81,7 +81,11 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return renderCLIError(err, stderr)
 		}
-		fmt.Fprintf(stdout, "Plan for %s (Expo/%s; mode: %s):\n", plan.Project.Root, plan.Project.PackageManager, plan.Config.Mode)
+		hostLabel := "Expo/" + plan.Project.PackageManager
+		if plan.Project.Host == "swiftui" {
+			hostLabel = "SwiftUI/" + plan.Project.SwiftUI.TargetName
+		}
+		fmt.Fprintf(stdout, "Plan for %s (%s; mode: %s):\n", plan.Project.Root, hostLabel, plan.Config.Mode)
 		for _, operation := range plan.Operations {
 			status := "change"
 			if contains(plan.SyncedPaths, operation.Path) {

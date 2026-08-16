@@ -83,6 +83,10 @@ type observation struct {
 	configError   string
 	pluginRaw     []byte
 	pluginMissing bool
+	generatedRaw  map[string][]byte
+	swift         SwiftUIIntegration
+	swiftInfo     map[string]any
+	swiftInfoErr  string
 	manifest      *GeneratedManifest
 	manifestRaw   []byte
 	manifestError string
@@ -127,7 +131,10 @@ func RunVerify(root string, emit EmitFunc) (VerifyResult, error) {
 	}
 
 	obs, collectErr := collectObservation(root)
-	rules := verificationRules()
+	rules := verificationRules("expo")
+	if collectErr == nil {
+		rules = verificationRules(obs.project.Host)
+	}
 	results := make([]CheckResult, 0, len(rules))
 	for _, currentRule := range rules {
 		if err := emit(RunEvent{Type: "check_started", CheckID: currentRule.id}); err != nil {
@@ -227,16 +234,25 @@ func randomID() (string, error) {
 }
 
 func collectObservation(root string) (observation, error) {
-	project, err := DiscoverExpo(root)
+	project, err := DiscoverProject(root)
 	if err != nil {
 		return observation{}, err
 	}
-	for _, path := range []string{ConfigPath, ".attribution/.gitignore", PluginPath, ManifestPath, ProbePath} {
+	paths := []string{ConfigPath, ".attribution/.gitignore", ManifestPath, ProbePath}
+	if project.Host == "swiftui" {
+		paths = append(paths, SwiftSourcePath, SwiftPlistPath, SwiftGuidePath, project.SwiftUI.ProjectFile)
+		if project.SwiftUI.InfoPlistPath != "" {
+			paths = append(paths, project.SwiftUI.InfoPlistPath)
+		}
+	} else {
+		paths = append(paths, PluginPath)
+	}
+	for _, path := range paths {
 		if err := validateSafeTarget(project.Root, path); err != nil {
 			return observation{}, err
 		}
 	}
-	obs := observation{project: project}
+	obs := observation{project: project, generatedRaw: map[string][]byte{}}
 	config, raw, err := ReadConfig(project.Root)
 	if err != nil {
 		obs.configError = err.Error()
@@ -244,13 +260,31 @@ func collectObservation(root string) (observation, error) {
 		obs.config = &config
 		obs.configRaw = raw
 	}
-	pluginRaw, err := os.ReadFile(filepath.Join(project.Root, filepath.FromSlash(PluginPath)))
-	if errors.Is(err, os.ErrNotExist) {
-		obs.pluginMissing = true
-	} else if err != nil {
-		return observation{}, fmt.Errorf("read %s: %w", PluginPath, err)
-	} else {
-		obs.pluginRaw = pluginRaw
+	generatedPaths := []string{PluginPath}
+	if project.Host == "swiftui" {
+		generatedPaths = []string{SwiftSourcePath, SwiftPlistPath, SwiftGuidePath}
+		obs.swift = inspectSwiftUIIntegration(project)
+		if info, infoErr := loadSwiftInfoPlist(project); infoErr != nil {
+			obs.swiftInfoErr = infoErr.Error()
+		} else {
+			obs.swiftInfo = info
+		}
+	}
+	for _, generatedPath := range generatedPaths {
+		generated, readErr := os.ReadFile(filepath.Join(project.Root, filepath.FromSlash(generatedPath)))
+		if errors.Is(readErr, os.ErrNotExist) {
+			if generatedPath == PluginPath || generatedPath == SwiftSourcePath {
+				obs.pluginMissing = true
+			}
+			continue
+		}
+		if readErr != nil {
+			return observation{}, fmt.Errorf("read %s: %w", generatedPath, readErr)
+		}
+		obs.generatedRaw[generatedPath] = generated
+		if generatedPath == PluginPath || generatedPath == SwiftSourcePath {
+			obs.pluginRaw = generated
+		}
 	}
 	manifestRaw, err := os.ReadFile(filepath.Join(project.Root, filepath.FromSlash(ManifestPath)))
 	if errors.Is(err, os.ErrNotExist) {
@@ -281,7 +315,26 @@ func collectObservation(root string) (observation, error) {
 	return obs, nil
 }
 
-func verificationRules() []rule {
+func verificationRules(host string) []rule {
+	if host == "swiftui" {
+		return []rule{
+			{id: "schema.valid", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleSchemaValid},
+			{id: "swiftui.package-linked", version: "1.0.0", section: "build", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleSwiftPackageLinked},
+			{id: "swiftui.generated-source-targeted", version: "1.0.0", section: "build", evidence: "static", integrity: "generated", comparability: "none", evaluate: ruleSwiftSourceTargeted},
+			{id: "swiftui.info-plist-plan", version: "1.0.0", section: "build", evidence: "static", integrity: "observed_static", comparability: "exact", evaluate: ruleSwiftInfoPlan},
+			{id: "app.bundle-id-matches", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleBundleID},
+			{id: "apple.conversion-authority.single-owner", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleSingleOwner},
+			{id: "apple.endpoint.report-attribution", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleEndpoint},
+			{id: "apple.skan.items-present", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleSKAdItems},
+			{id: "meta.app-id-wired", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleMetaAppID},
+			{id: "meta.conversion-management-disabled", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleMetaConversion},
+			{id: "secrets.none-in-client", version: "1.0.0", section: "build", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleNoSecrets},
+			{id: "generated.manifest-hashes", version: "1.0.0", section: "build", evidence: "static", integrity: "generated", comparability: "none", evaluate: ruleManifestHashes},
+			{id: "runtime.report-imported", version: "1.0.0", section: "your-logic", evidence: "simulator", integrity: "unknown", comparability: "none", evaluate: ruleRuntimeProbe},
+			{id: "device.aak-postback", version: "1.0.0", section: "device", evidence: "device-lab", integrity: "unknown", comparability: "none", evaluate: ruleDevicePending},
+			{id: "production.winning-copy", version: "1.0.0", section: "production", evidence: "apple", integrity: "unknown", comparability: "none", evaluate: ruleProductionPending},
+		}
+	}
 	return []rule{
 		{id: "schema.valid", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleSchemaValid},
 		{id: "expo.package-installed", version: "1.0.0", section: "config", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleExpoPackage},
@@ -388,15 +441,70 @@ func rulePluginWrapper(obs observation) CheckResult {
 	return CheckResult{Verdict: "pass", Reason: "deterministic wrapper invokes " + AttributionEntry + " with the expected options"}
 }
 
+func ruleSwiftPackageLinked(obs observation) CheckResult {
+	if !obs.swift.PackageLinked {
+		return CheckResult{Verdict: "fail", Reason: obs.swift.PackageProblem, Remediation: "In Xcode, add " + AttributionRepo + " and link its AttributionCore product to target " + obs.project.SwiftUI.TargetName + "."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "the application target links AttributionCore from the official AttributionKit Swift package"}
+}
+
+func ruleSwiftSourceTargeted(obs observation) CheckResult {
+	if unknown := validConfigOrUnknown(obs, "the generated Swift plan"); unknown != nil {
+		return *unknown
+	}
+	if obs.pluginMissing {
+		return CheckResult{Verdict: "fail", Reason: "generated Swift plan is missing", Remediation: "Run `attribution apply`."}
+	}
+	expected := renderSwiftSource(*obs.config, schemaHash(*obs.config))
+	if !bytes.Equal(obs.pluginRaw, expected) {
+		return CheckResult{Verdict: "fail", Reason: "generated Swift plan drifted from desired state", Remediation: "Run `attribution apply`."}
+	}
+	if !obs.swift.SourceTargeted {
+		return CheckResult{Verdict: "fail", Reason: obs.swift.SourceProblem, Remediation: "Add " + SwiftSourcePath + " to target " + obs.project.SwiftUI.TargetName + " without copying or renaming it."}
+	}
+	return CheckResult{Verdict: "pass", Reason: "the exact generated Swift plan is present in the application target's Sources build phase"}
+}
+
+func ruleSwiftInfoPlan(obs observation) CheckResult {
+	if unknown := validConfigOrUnknown(obs, "the target-declared SwiftUI Info.plist plan"); unknown != nil {
+		return *unknown
+	}
+	if obs.swiftInfo == nil {
+		return CheckResult{Verdict: "fail", Reason: "target Info.plist is not inspectable: " + obs.swiftInfoErr, Remediation: "Follow " + SwiftGuidePath + " and declare an explicit XML INFOPLIST_FILE for every target configuration."}
+	}
+	wantedSchema := schemaHash(*obs.config)
+	observedSchema, schemaOK := obs.swiftInfo["AttributionKitSchemaHash"].(string)
+	if !schemaOK || observedSchema != wantedSchema {
+		return CheckResult{Verdict: "fail", Reason: "target Info.plist AttributionKitSchemaHash does not match the generated plan", Remediation: "Copy the current values from " + SwiftPlistPath + " into " + obs.project.SwiftUI.InfoPlistPath + "."}
+	}
+	observedEvents, eventsOK := obs.swiftInfo["AttributionKitEventValues"].(map[string]any)
+	if !eventsOK || len(observedEvents) != len(obs.config.Schema.Events) {
+		return CheckResult{Verdict: "fail", Reason: "target Info.plist AttributionKitEventValues does not exactly match the generated plan", Remediation: "Copy the current values from " + SwiftPlistPath + " into " + obs.project.SwiftUI.InfoPlistPath + "."}
+	}
+	for index, event := range obs.config.Schema.Events {
+		value, ok := observedEvents[event].(int)
+		if !ok || value != index {
+			return CheckResult{Verdict: "fail", Reason: fmt.Sprintf("target Info.plist event %s does not map to generated conversion value %d", event, index), Remediation: "Copy the current values from " + SwiftPlistPath + " into " + obs.project.SwiftUI.InfoPlistPath + "."}
+		}
+	}
+	return CheckResult{Verdict: "pass", Reason: "target Info.plist schema hash and event-value dictionary exactly match the generated native plan"}
+}
+
 func ruleBundleID(obs observation) CheckResult {
 	if unknown := validConfigOrUnknown(obs, "the bundle identifier"); unknown != nil {
 		return *unknown
 	}
 	if obs.project.BundleID == "" {
+		if obs.project.Host == "swiftui" {
+			return CheckResult{Verdict: "fail", Reason: "Xcode target does not declare an explicit PRODUCT_BUNDLE_IDENTIFIER", Remediation: "Set one literal bundle identifier in every target build configuration."}
+		}
 		return CheckResult{Verdict: "fail", Reason: "app.json does not declare expo.ios.bundleIdentifier", Remediation: "Set expo.ios.bundleIdentifier to the app's real bundle identifier, then run `attribution apply`."}
 	}
 	if obs.project.BundleID != obs.config.App.BundleID {
 		return CheckResult{Verdict: "fail", Reason: fmt.Sprintf("desired bundle id %s does not match app.json bundle id %s", obs.config.App.BundleID, obs.project.BundleID), Remediation: "Make app.bundleId and expo.ios.bundleIdentifier agree."}
+	}
+	if obs.project.Host == "swiftui" {
+		return CheckResult{Verdict: "pass", Reason: "desired bundle id matches the Xcode application target"}
 	}
 	return CheckResult{Verdict: "pass", Reason: "desired bundle id matches app.json"}
 }
@@ -404,6 +512,12 @@ func ruleBundleID(obs observation) CheckResult {
 func ruleSingleOwner(obs observation) CheckResult {
 	if unknown := validConfigOrUnknown(obs, "conversion authority"); unknown != nil {
 		return *unknown
+	}
+	if obs.project.Host == "swiftui" {
+		if obs.config.Mode != "managed" || obs.config.ConversionAuthority.Owner != "managed-runtime" {
+			return CheckResult{Verdict: "fail", Reason: "SwiftUI host does not have a verifiable managed-runtime single owner", Remediation: "Use managed mode and keep native third-party conversion managers outside this preview setup."}
+		}
+		return CheckResult{Verdict: "pass", Reason: "desired state assigns conversion updates to the generated AttributionCore call site; native third-party SDK ownership remains outside this preview's automated inspection"}
 	}
 	installed := installedManagers(obs.project)
 	if obs.config.Mode == "external" {
@@ -444,6 +558,17 @@ func ruleEndpoint(obs observation) CheckResult {
 	if unknown := validConfigOrUnknown(obs, "the Apple endpoint"); unknown != nil {
 		return *unknown
 	}
+	if obs.project.Host == "swiftui" {
+		if obs.swiftInfo == nil {
+			return CheckResult{Verdict: "fail", Reason: "target Info.plist is not inspectable: " + obs.swiftInfoErr, Remediation: "Follow " + SwiftGuidePath + "."}
+		}
+		expected, _ := normalizedEndpoint(obs.config.Providers.Apple.Endpoint)
+		observed, ok := obs.swiftInfo["NSAdvertisingAttributionReportEndpoint"].(string)
+		if !ok || observed != expected {
+			return CheckResult{Verdict: "fail", Reason: "target Info.plist does not carry the desired HTTPS Apple report-attribution endpoint", Remediation: "Copy the current endpoint from " + SwiftPlistPath + "."}
+		}
+		return CheckResult{Verdict: "pass", Reason: "target Info.plist carries the desired Apple report-attribution endpoint"}
+	}
 	expected, _ := renderWrapper(*obs.config, schemaHash(*obs.config))
 	if obs.pluginMissing || !bytes.Equal(obs.pluginRaw, expected) {
 		return CheckResult{Verdict: "fail", Reason: "generated wrapper does not carry the desired HTTPS Apple endpoint", Remediation: "Run `attribution apply`."}
@@ -457,6 +582,31 @@ func ruleSKAdItems(obs observation) CheckResult {
 	}
 	if len(obs.config.Providers.Apple.SKAdNetworkIDs) == 0 {
 		return CheckResult{Verdict: "not_applicable", Reason: "no SKAdNetwork ids are declared in desired state"}
+	}
+	if obs.project.Host == "swiftui" {
+		if obs.swiftInfo == nil {
+			return CheckResult{Verdict: "fail", Reason: "target Info.plist is not inspectable: " + obs.swiftInfoErr, Remediation: "Follow " + SwiftGuidePath + "."}
+		}
+		items, ok := obs.swiftInfo["SKAdNetworkItems"].([]any)
+		if !ok {
+			return CheckResult{Verdict: "fail", Reason: "target Info.plist SKAdNetworkItems is missing or not an array", Remediation: "Copy the current SKAdNetworkItems from " + SwiftPlistPath + "."}
+		}
+		observed := map[string]bool{}
+		for _, item := range items {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if id, ok := entry["SKAdNetworkIdentifier"].(string); ok {
+				observed[id] = true
+			}
+		}
+		for _, id := range obs.config.Providers.Apple.SKAdNetworkIDs {
+			if !observed[id] {
+				return CheckResult{Verdict: "fail", Reason: "target Info.plist is missing declared SKAdNetwork id " + id, Remediation: "Copy the current SKAdNetworkItems from " + SwiftPlistPath + "."}
+			}
+		}
+		return CheckResult{Verdict: "pass", Reason: fmt.Sprintf("%d declared SKAdNetwork id(s) are present in the target Info.plist", len(obs.config.Providers.Apple.SKAdNetworkIDs))}
 	}
 	for _, id := range obs.config.Providers.Apple.SKAdNetworkIDs {
 		if !bytes.Contains(obs.pluginRaw, []byte(id)) {
@@ -473,6 +623,9 @@ func ruleMetaAppID(obs observation) CheckResult {
 	if obs.config.Providers.Meta == nil {
 		return CheckResult{Verdict: "not_applicable", Reason: "no Meta provider is declared in desired state"}
 	}
+	if obs.project.Host == "swiftui" {
+		return CheckResult{Verdict: "fail", Reason: "providers.meta is declared but native Meta SDK configuration is not compiled by this SwiftUI preview", Remediation: "Remove providers.meta from this managed SwiftUI plan and configure the native SDK independently."}
+	}
 	if !bytes.Contains(obs.pluginRaw, []byte(`"metaAppId": "`+obs.config.Providers.Meta.AppID+`"`)) {
 		return CheckResult{Verdict: "fail", Reason: "generated wrapper does not carry the declared Meta app id", Remediation: "Run `attribution apply`."}
 	}
@@ -482,6 +635,9 @@ func ruleMetaAppID(obs observation) CheckResult {
 func ruleMetaConversion(obs observation) CheckResult {
 	if unknown := validConfigOrUnknown(obs, "Meta conversion management"); unknown != nil {
 		return *unknown
+	}
+	if obs.project.Host == "swiftui" {
+		return CheckResult{Verdict: "not_applicable", Reason: "native third-party SDK conversion ownership remains outside this preview's automated package inspection"}
 	}
 	if _, installed := obs.project.Dependencies["react-native-fbsdk-next"]; !installed {
 		return CheckResult{Verdict: "not_applicable", Reason: "Meta SDK is not installed; conversion-reporting disablement does not apply"}
@@ -529,10 +685,38 @@ func ruleManifestHashes(obs observation) CheckResult {
 	}
 	wantedConfig := sha256Hex(obs.configRaw)
 	wantedSchema := schemaHash(*obs.config)
+	if obs.project.Host == "swiftui" {
+		if obs.manifest.Version != 1 || obs.manifest.GeneratedBy != "attribution "+Version || obs.manifest.Host != "swiftui" || obs.manifest.Mode != obs.config.Mode || obs.manifest.ConfigHash != wantedConfig || obs.manifest.SchemaHash != wantedSchema || obs.manifest.PackageManager != "swiftpm" {
+			return CheckResult{Verdict: "fail", Reason: "generated SwiftUI manifest metadata or config/schema hash drifted from observed project state", Remediation: "Run `attribution apply`."}
+		}
+		expectedApp := GeneratedAppConfig{Path: obs.project.SwiftUI.ProjectFile, Target: obs.project.SwiftUI.TargetName, InfoPlist: obs.project.SwiftUI.InfoPlistPath, GeneratedSwift: SwiftSourcePath, PackageProduct: "AttributionCore"}
+		if obs.manifest.AppConfig != expectedApp {
+			return CheckResult{Verdict: "fail", Reason: "generated manifest does not record the exact Xcode target integration contract", Remediation: "Run `attribution apply`."}
+		}
+		expected := []struct {
+			path string
+			raw  []byte
+		}{
+			{SwiftSourcePath, renderSwiftSource(*obs.config, wantedSchema)},
+			{SwiftPlistPath, nil},
+			{SwiftGuidePath, renderSwiftGuide(obs.project)},
+		}
+		expected[1].raw, _ = renderSwiftPlist(*obs.config, wantedSchema)
+		if len(obs.manifest.GeneratedFiles) != len(expected) {
+			return CheckResult{Verdict: "fail", Reason: "generated SwiftUI manifest has the wrong owned-file set", Remediation: "Run `attribution apply`."}
+		}
+		for index, item := range expected {
+			observedRaw, found := obs.generatedRaw[item.path]
+			if !found || !bytes.Equal(observedRaw, item.raw) || obs.manifest.GeneratedFiles[index].Path != item.path || obs.manifest.GeneratedFiles[index].SHA256 != sha256Hex(observedRaw) {
+				return CheckResult{Verdict: "fail", Reason: "generated SwiftUI artifact or manifest hash drifted at " + item.path, Remediation: "Run `attribution apply`."}
+			}
+		}
+		return CheckResult{Verdict: "pass", Reason: "observed config, Xcode target binding, and all generated SwiftUI artifact hashes match the deterministic manifest"}
+	}
 	if obs.manifest.Version != 1 || obs.manifest.GeneratedBy != "attribution "+Version || obs.manifest.Host != "expo" || obs.manifest.Mode != obs.config.Mode || obs.manifest.ConfigHash != wantedConfig || obs.manifest.SchemaHash != wantedSchema || obs.manifest.PackageManager != obs.project.PackageManager {
 		return CheckResult{Verdict: "fail", Reason: "generated manifest metadata or config/schema hash drifted from observed project state", Remediation: "Run `attribution apply`."}
 	}
-	if obs.manifest.AppConfig.Path != "app.json" || obs.manifest.AppConfig.Plugin != "./"+PluginPath {
+	if obs.manifest.AppConfig != (GeneratedAppConfig{Path: "app.json", Plugin: "./" + PluginPath}) {
 		return CheckResult{Verdict: "fail", Reason: "generated manifest does not record the exact app.json plugin registration", Remediation: "Run `attribution apply`."}
 	}
 	if len(obs.manifest.GeneratedFiles) != 1 || obs.manifest.GeneratedFiles[0].Path != PluginPath || obs.manifest.GeneratedFiles[0].SHA256 != sha256Hex(obs.pluginRaw) {

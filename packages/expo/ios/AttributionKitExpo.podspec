@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
   spec.name = 'AttributionKitExpo'
-  spec.version = '0.1.0-preview.1'
+  spec.version = '0.1.0-preview.2'
   spec.summary = 'Auditable AdAttributionKit and SKAdNetwork runtime for Expo.'
   spec.description = 'Expo Modules API bridge and config plugin for the AttributionKit Swift runtime.'
   spec.homepage = 'https://github.com/attributionkit/attribution'

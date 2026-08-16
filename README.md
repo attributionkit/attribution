@@ -12,7 +12,7 @@ The runtime contains no identifiers, event stream, or network client. It maps a 
 
 ## Status
 
-`v0.1.0-preview.1` is the first **client preview**, published as a GitHub pre-release. Setup and static verification work fully offline. Simulator calls prove app wiring and business-logic routing only; Apple postbacks require supported physical-device or production evidence and remain `unknown` until that evidence exists.
+`v0.1.0-preview.2` is the current **client preview** candidate. Setup and static verification work fully offline. Simulator calls prove app wiring and business-logic routing only; Apple postbacks require supported physical-device or production evidence and remain `unknown` until that evidence exists.
 
 **Do not ship the preview's `https://attribution.sh/` endpoint in a production app.** The receiver is not claimed by the current preview release. The public repository now defines an explicit hosted CLI client and its OpenAPI/MCP contracts, while the Vercel Blob → Workflow → PlanetScale → WorkOS implementation remains a separate private cloud system. This source change alone is not deployment evidence.
 
@@ -29,7 +29,7 @@ go install github.com/attributionkit/attribution/cmd/attribution@latest
 Release archives, third-party notices, and SHA-256 checksums are attached to each GitHub release. The Expo package is attached as an npm tarball until npm trusted publishing is activated:
 
 ```sh
-npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.1/attributionkit-expo-0.1.0-preview.1.tgz
+npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.2/attributionkit-expo-0.1.0-preview.2.tgz
 ```
 
 For native apps, add `https://github.com/attributionkit/attribution` in Xcode and select the root package's `AttributionCore` product as documented in [the SwiftUI guide](docs/swiftui-quickstart.md). A root podspec is also included for CocoaPods consumers.
@@ -41,7 +41,7 @@ npx create-expo-app@latest my-app --template blank-typescript
 cd my-app
 # Preview only: do not ship the inactive attribution.sh endpoint to production.
 # Set expo.ios.bundleIdentifier in app.json first.
-npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.1/attributionkit-expo-0.1.0-preview.1.tgz
+npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.2/attributionkit-expo-0.1.0-preview.2.tgz
 attribution init
 # Review .attribution/config.yaml, then:
 attribution plan
@@ -63,7 +63,7 @@ permissions:
   contents: read
   attestations: read
 steps:
-  - uses: attributionkit/attribution/action@v0.1.0-preview.1
+  - uses: attributionkit/attribution/action@v0.1.0-preview.2
 ```
 
 ## Repository map

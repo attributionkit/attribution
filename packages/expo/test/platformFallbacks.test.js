@@ -34,7 +34,7 @@ for (const file of [
   test(`${file} is import-safe and fails only when an Apple API is invoked`, async () => {
     const fallback = loadTypeScriptFallback(file);
 
-    assert.equal(fallback.runtimeVersion, '0.1.0-preview.1');
+    assert.equal(fallback.runtimeVersion, '0.1.0-preview.2');
     assert.throws(() => fallback.schemaHash(), /available only in an Apple native build/);
     assert.throws(() => fallback.conversionValue('install'), /available only in an Apple native build/);
     await assert.rejects(

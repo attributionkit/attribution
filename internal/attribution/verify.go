@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type CheckResult struct {
@@ -752,8 +753,28 @@ func gitRevision(root string) *string {
 }
 
 func validateRunManifest(manifest RunManifest) error {
-	if manifest.RunID == "" || manifest.SchemaVersion != SchemaVersion || manifest.StartedAt == "" || manifest.FinishedAt == "" {
+	const (
+		maxRunIDLength       = 128
+		maxRevisionLength    = 128
+		maxBundleIDLength    = 255
+		maxResults           = 128
+		maxCheckIDLength     = 128
+		maxRuleVersionLength = 64
+		maxReasonLength      = 1000
+		maxRemediationLength = 2000
+	)
+	stringLength := func(value string) int { return utf8.RuneCountInString(value) }
+	if manifest.RunID == "" || stringLength(manifest.RunID) > maxRunIDLength || manifest.SchemaVersion != SchemaVersion || manifest.StartedAt == "" || manifest.FinishedAt == "" {
 		return errors.New("missing run identity or timestamps")
+	}
+	if len(manifest.Results) > maxResults {
+		return errors.New("run manifest has too many results")
+	}
+	if manifest.Environment.Revision != nil && stringLength(*manifest.Environment.Revision) > maxRevisionLength {
+		return errors.New("invalid project revision")
+	}
+	if manifest.Project.BundleID != nil && stringLength(*manifest.Project.BundleID) > maxBundleIDLength {
+		return errors.New("invalid project bundle id")
 	}
 	allowedDistribution := map[string]bool{"dev": true, "testflight": true, "app-store": true, "unknown": true}
 	allowedProtocol := map[string]bool{"aak": true, "skan": true, "both": true, "none": true, "unknown": true}
@@ -779,7 +800,7 @@ func validateRunManifest(manifest RunManifest) error {
 	allowedFinality := map[string]bool{"provisional": true, "settled": true}
 	seen := map[string]bool{}
 	for _, result := range manifest.Results {
-		if result.CheckID == "" || seen[result.CheckID] || result.RuleVersion == "" || result.Reason == "" || !allowedSection[result.Section] || !allowedExecution[result.Execution] || !allowedVerdict[result.Verdict] || !allowedEvidence[result.Evidence] || !allowedBasis[result.Basis] || !allowedIntegrity[result.Integrity] || !allowedComparability[result.Comparability] || !allowedCollectionHealth[result.CollectionHealth] || !allowedFinality[result.Finality] {
+		if result.CheckID == "" || stringLength(result.CheckID) > maxCheckIDLength || seen[result.CheckID] || result.RuleVersion == "" || stringLength(result.RuleVersion) > maxRuleVersionLength || result.Reason == "" || stringLength(result.Reason) > maxReasonLength || stringLength(result.Remediation) > maxRemediationLength || !allowedSection[result.Section] || !allowedExecution[result.Execution] || !allowedVerdict[result.Verdict] || !allowedEvidence[result.Evidence] || !allowedBasis[result.Basis] || !allowedIntegrity[result.Integrity] || !allowedComparability[result.Comparability] || !allowedCollectionHealth[result.CollectionHealth] || !allowedFinality[result.Finality] {
 			return fmt.Errorf("invalid result %q", result.CheckID)
 		}
 		seen[result.CheckID] = true

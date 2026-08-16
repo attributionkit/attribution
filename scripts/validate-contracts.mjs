@@ -57,6 +57,16 @@ for (const [schemaId, fixturePath] of fixtures) {
 
 const sha256 = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 
+function duplicateRunManifestCheckIds(value) {
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const result of value.results) {
+    if (seen.has(result.checkId)) duplicates.add(result.checkId);
+    seen.add(result.checkId);
+  }
+  return [...duplicates];
+}
+
 const config = fixtureData.get('test-vectors/config-managed.json');
 if (config.mode !== 'managed' || config.conversionAuthority.owner !== 'managed-runtime') {
   throw new Error('managed config vector must use the Go CLI managed-runtime authority');
@@ -83,6 +93,44 @@ if (!registrations.includes('./.attribution/plugin/withAttribution.js')) {
 const manifest = fixtureData.get('test-vectors/run-manifest-static.json');
 if (manifest.project.schemaHash !== expectedSchemaHash) {
   throw new Error('run-manifest schema hash drifted from the managed config vector');
+}
+if (duplicateRunManifestCheckIds(manifest).length !== 0) {
+  throw new Error('run-manifest check ids must be unique');
+}
+
+const validateRunManifest = ajv.getSchema('https://attribution.sh/contracts/run-manifest.v1.schema.json');
+for (const [label, mutate] of [
+  ['result count', (value) => {
+    value.results = Array.from({ length: 129 }, (_, index) => ({
+      ...value.results[0],
+      checkId: `bounded-check-${index}`,
+    }));
+  }],
+  ['check id', (value) => { value.results[0].checkId = 'x'.repeat(129); }],
+  ['rule version', (value) => { value.results[0].ruleVersion = 'x'.repeat(65); }],
+  ['reason', (value) => { value.results[0].reason = 'x'.repeat(1001); }],
+  ['remediation', (value) => { value.results[0].remediation = 'x'.repeat(2001); }],
+  ['bundle id', (value) => { value.project.bundleId = 'x'.repeat(256); }],
+  ['config hash', (value) => { value.project.configHash = 'x'.repeat(65); }],
+  ['schema hash', (value) => { value.project.schemaHash = 'x'.repeat(65); }],
+]) {
+  const invalid = structuredClone(manifest);
+  mutate(invalid);
+  if (validateRunManifest(invalid)) {
+    throw new Error(`run-manifest accepted an oversized ${label}`);
+  }
+}
+
+const duplicateCheckManifest = structuredClone(manifest);
+duplicateCheckManifest.results.push({
+  ...duplicateCheckManifest.results[0],
+  reason: 'A second result reused an existing check id.',
+});
+if (!validateRunManifest(duplicateCheckManifest)) {
+  throw new Error('duplicate check-id semantic vector must remain structurally valid');
+}
+if (duplicateRunManifestCheckIds(duplicateCheckManifest).length !== 1) {
+  throw new Error('run-manifest semantic validation did not reject a duplicate check id');
 }
 
 const runtimeProbe = fixtureData.get('test-vectors/runtime-probe-simulator.json');

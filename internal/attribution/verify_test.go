@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -350,6 +351,89 @@ func TestEmittedJSONFieldSetsTrackPublishedContracts(t *testing.T) {
 			t.Fatalf("no published event variant for %s", event.Type)
 		}
 		assertAllowedAndRequiredKeys(t, object, objectKeys(matched["properties"]), stringSlice(matched["required"]))
+	}
+}
+
+func TestValidateRunManifestRejectsAmplificationAndDuplicateChecks(t *testing.T) {
+	validManifest := func() RunManifest {
+		bundleID := "sh.attribution.example"
+		configHash := strings.Repeat("a", 64)
+		schemaHash := strings.Repeat("b", 64)
+		return RunManifest{
+			RunID:         "run-fixture",
+			SchemaVersion: SchemaVersion,
+			StartedAt:     "2026-08-16T20:00:00Z",
+			FinishedAt:    "2026-08-16T20:00:01Z",
+			Environment: EnvironmentAttributes{
+				Distribution:        "dev",
+				Protocol:            "both",
+				TestMechanism:       "simulator",
+				PurchaseEnvironment: "none",
+				SigningKey:          "development",
+			},
+			Project: ProjectIdentity{
+				BundleID:   &bundleID,
+				ConfigHash: &configHash,
+				SchemaHash: &schemaHash,
+			},
+			Results: []CheckResult{{
+				CheckID:          "schema.valid",
+				RuleVersion:      "1.0.0",
+				Section:          "config",
+				Execution:        "succeeded",
+				Verdict:          "pass",
+				Evidence:         "static",
+				Basis:            "unknown",
+				Integrity:        "observed_static",
+				Comparability:    "none",
+				CollectionHealth: "healthy",
+				Finality:         "settled",
+				Reason:           "The schema is valid.",
+			}},
+		}
+	}
+
+	if err := validateRunManifest(validManifest()); err != nil {
+		t.Fatalf("valid manifest failed validation: %v", err)
+	}
+
+	tests := map[string]func(*RunManifest){
+		"too many results": func(manifest *RunManifest) {
+			base := manifest.Results[0]
+			manifest.Results = make([]CheckResult, 129)
+			for index := range manifest.Results {
+				manifest.Results[index] = base
+				manifest.Results[index].CheckID = fmt.Sprintf("bounded-check-%d", index)
+			}
+		},
+		"duplicate check id": func(manifest *RunManifest) {
+			manifest.Results = append(manifest.Results, manifest.Results[0])
+		},
+		"oversized check id": func(manifest *RunManifest) {
+			manifest.Results[0].CheckID = strings.Repeat("x", 129)
+		},
+		"oversized rule version": func(manifest *RunManifest) {
+			manifest.Results[0].RuleVersion = strings.Repeat("x", 65)
+		},
+		"oversized reason": func(manifest *RunManifest) {
+			manifest.Results[0].Reason = strings.Repeat("x", 1001)
+		},
+		"oversized remediation": func(manifest *RunManifest) {
+			manifest.Results[0].Remediation = strings.Repeat("x", 2001)
+		},
+		"oversized bundle id": func(manifest *RunManifest) {
+			value := strings.Repeat("x", 256)
+			manifest.Project.BundleID = &value
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			manifest := validManifest()
+			mutate(&manifest)
+			if err := validateRunManifest(manifest); err == nil {
+				t.Fatal("invalid manifest was accepted")
+			}
+		})
 	}
 }
 

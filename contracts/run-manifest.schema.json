@@ -11,8 +11,8 @@
       "additionalProperties": false,
       "required": ["checkId", "ruleVersion", "section", "execution", "verdict", "evidence", "basis", "integrity", "comparability", "collectionHealth", "finality", "reason"],
       "properties": {
-        "checkId": { "type": "string", "minLength": 1 },
-        "ruleVersion": { "type": "string", "minLength": 1 },
+        "checkId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "ruleVersion": { "type": "string", "minLength": 1, "maxLength": 64 },
         "section": { "enum": ["config", "build", "your-logic", "device", "production"] },
         "execution": { "enum": ["queued", "running", "succeeded", "error", "timed_out"] },
         "verdict": { "enum": ["pass", "fail", "unknown", "not_applicable"] },
@@ -22,13 +22,13 @@
         "comparability": { "enum": ["exact", "bounded", "directional", "none"] },
         "collectionHealth": { "enum": ["healthy", "degraded", "stale", "unknown"] },
         "finality": { "enum": ["provisional", "settled"] },
-        "reason": { "type": "string", "minLength": 1 },
-        "remediation": { "type": "string", "minLength": 1 }
+        "reason": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "remediation": { "type": "string", "minLength": 1, "maxLength": 2000 }
       }
     }
   },
   "properties": {
-    "runId": { "type": "string", "minLength": 1 },
+    "runId": { "type": "string", "minLength": 1, "maxLength": 128 },
     "schemaVersion": { "const": "1.1.0" },
     "startedAt": { "type": "string", "format": "date-time" },
     "finishedAt": { "type": "string", "format": "date-time" },
@@ -42,7 +42,7 @@
         "testMechanism": { "enum": ["none", "simulator", "simulator-mock", "device-lab", "developer-settings"] },
         "purchaseEnvironment": { "enum": ["none", "storekit-test", "sandbox", "production", "unknown"] },
         "signingKey": { "enum": ["development", "distribution", "unknown"] },
-        "revision": { "type": ["string", "null"] }
+        "revision": { "type": ["string", "null"], "maxLength": 128 }
       }
     },
     "project": {
@@ -50,11 +50,11 @@
       "additionalProperties": false,
       "required": ["bundleId", "configHash", "schemaHash"],
       "properties": {
-        "bundleId": { "type": ["string", "null"] },
-        "configHash": { "type": ["string", "null"] },
-        "schemaHash": { "type": ["string", "null"] }
+        "bundleId": { "type": ["string", "null"], "maxLength": 255 },
+        "configHash": { "type": ["string", "null"], "maxLength": 64, "pattern": "^[a-f0-9]{64}$" },
+        "schemaHash": { "type": ["string", "null"], "maxLength": 64, "pattern": "^[a-f0-9]{64}$" }
       }
     },
-    "results": { "type": "array", "items": { "$ref": "#/$defs/result" } }
+    "results": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/result" } }
   }
 }

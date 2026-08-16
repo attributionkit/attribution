@@ -14,8 +14,8 @@ Set a real `expo.ios.bundleIdentifier` in `app.json`; the CLI refuses to invent 
 ## 2. Install and compile desired state
 
 ```sh
-go install github.com/attributionkit/attribution/cmd/attribution@v0.1.0-preview.1
-npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.1/attributionkit-expo-0.1.0-preview.1.tgz
+go install github.com/attributionkit/attribution/cmd/attribution@v0.1.0-preview.2
+npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.2/attributionkit-expo-0.1.0-preview.2.tgz
 attribution init
 ```
 

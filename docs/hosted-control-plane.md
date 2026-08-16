@@ -4,12 +4,15 @@ The hosted client is an explicit CLI surface. `AttributionCore` and `@attributio
 
 ## Connect
 
-Initialize and verify the project before connecting it:
+Initialize, apply, run the configured event, import its fresh exact simulator report, and verify the project before connecting it:
 
 ```sh
+attribution probe import --framework expo --target simulator --report /path/to/runtime-report.json
 attribution verify --json
 attribution connect
 ```
+
+The probe import is local-only and can add evidence only to Your Logic. Its ignored `.attribution/probe.json` artifact is sanitized, exact-source-hash-bound, and expires after 15 minutes; it is included in the next run manifest as `copy_observed_unsigned`, never as Device or Production evidence.
 
 `connect` reads the configured bundle identifier, creates a possession-bound authorization session, and opens the returned `verificationUriComplete` in the browser when available. The CLI also displays the fallback URL and user code. After the human authorizes the session, the CLI returns the high-entropy device code to the exchange endpoint and links the exact bundle identifier.
 
@@ -56,6 +59,10 @@ The exact HTTP contract is in [`contracts/openapi.yaml`](../contracts/openapi.ya
 The HTTP behavior and integrity headers in this transcript are exercised by `internal/attribution/cloud_test.go` with an `httptest` control plane.
 
 ```text
+$ attribution probe import --framework expo --target simulator --report /tmp/runtime-report.json
+Imported fresh expo simulator runtime report for install (conversion value 0).
+Run `attribution verify --json` next. This probe can affect only Your Logic; Device and Production remain unknown.
+
 $ attribution verify --json
 {"type":"run_started","schemaVersion":"1.1.0",...}
 ...

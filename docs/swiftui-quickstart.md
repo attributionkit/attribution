@@ -23,6 +23,19 @@ Add these values to the app target's Info.plist/build configuration:
 
 Use [examples/swiftui/ContentView.swift](../examples/swiftui/ContentView.swift) as the minimal call site. `AttributionConfiguration.fromBundle()` validates the compiled values before any Apple call.
 
+The example encodes the returned `AttributionUpdateReport` as one exact JSON line, prints it, and renders selectable text. Save only that JSON object to a fresh file. From the configured project checkout whose `.attribution/config.yaml` and generated `.attribution/manifest.json` supplied the same schema plan, import it within 15 minutes:
+
+```sh
+attribution probe import \
+  --framework swiftui \
+  --target simulator \
+  --report /path/to/runtime-report.json \
+  --project /path/to/configured-project
+attribution verify --json --project /path/to/configured-project
+```
+
+`--framework swiftui` records unsigned source provenance; the report itself has no framework field, so it is not a cryptographic framework attestation. The importer independently requires exact event/value/schema agreement with the current config and generated plan, rejects stale or malformed input, redacts backend error text from its local artifact, and can pass only Your Logic.
+
 ## 3. Interpret the result honestly
 
 The simulator proves that the package links, the compiled plan is readable, the UI reaches the native runtime, and each Apple backend returns an observable result. It cannot produce a real SKAdNetwork or AdAttributionKit postback. Device-lab and production rows therefore remain pending.

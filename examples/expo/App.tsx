@@ -15,7 +15,11 @@ export default function App() {
   const recordInstall = async () => {
     try {
       setError(null);
-      setReport(await record('install'));
+      const nextReport = await record('install');
+      setReport(nextReport);
+      // The example emits the exact AttributionUpdateReport as one JSON line so
+      // it can be saved and imported by the local-only CLI probe.
+      console.log(JSON.stringify(nextReport));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -32,9 +36,14 @@ export default function App() {
         <Text>Install value {conversionValue('install')}</Text>
         <Button title="Record Install" onPress={recordInstall} />
         {report ? (
-          <Text accessibilityLabel={`Last event ${report.event}`}>
-            {report.event}: AAK {report.adAttributionKit.status} · SKAN {report.skAdNetwork.status}
-          </Text>
+          <>
+            <Text accessibilityLabel={`Last event ${report.event}`}>
+              {report.event}: AAK {report.adAttributionKit.status} · SKAN {report.skAdNetwork.status}
+            </Text>
+            <Text selectable accessibilityLabel="Copyable AttributionKit probe report">
+              {JSON.stringify(report)}
+            </Text>
+          </>
         ) : null}
         {error ? <Text accessibilityRole="alert">{error}</Text> : null}
       </View>

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attribution.sh/contracts/attribution-update-report.v1.schema.json",
+  "title": "AttributionCore AttributionUpdateReport v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event", "fineConversionValue", "schemaHash", "adAttributionKit", "skAdNetwork"],
+  "$defs": {
+    "backend": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "const": "succeeded" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "error"],
+          "properties": {
+            "status": { "const": "failed" },
+            "error": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "const": "unavailable" }
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "event": { "type": "string", "minLength": 1 },
+    "fineConversionValue": { "type": "integer", "minimum": 0, "maximum": 63 },
+    "schemaHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "adAttributionKit": { "$ref": "#/$defs/backend" },
+    "skAdNetwork": { "$ref": "#/$defs/backend" }
+  }
+}

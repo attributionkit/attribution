@@ -35,6 +35,9 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 	if cloudCommands[args[0]] {
 		return runCloudCLI(args, stdout, stderr)
 	}
+	if args[0] == "probe" {
+		return runProbeCLI(args, stdout, stderr)
+	}
 	command := args[0]
 	if command != "init" && command != "plan" && command != "apply" && command != "verify" {
 		fmt.Fprintf(stderr, "unknown command %q\n", command)
@@ -190,12 +193,13 @@ func renderCLIError(err error, stderr io.Writer) int {
 	var missingPackage *MissingExpoPackageError
 	var missingBundle *MissingBundleIdentifierError
 	var invalidConfig *ConfigValidationError
+	var invalidProbe *ProbeValidationError
 	var dirty *DirtyWorkingTreeError
 	if errors.As(err, &dirty) {
 		fmt.Fprintln(stderr, dirty.Error())
 		return 3
 	}
-	if errors.As(err, &unsupported) || errors.As(err, &missingConfig) || errors.As(err, &configExists) || errors.As(err, &missingPackage) || errors.As(err, &missingBundle) || errors.As(err, &invalidConfig) {
+	if errors.As(err, &unsupported) || errors.As(err, &missingConfig) || errors.As(err, &configExists) || errors.As(err, &missingPackage) || errors.As(err, &missingBundle) || errors.As(err, &invalidConfig) || errors.As(err, &invalidProbe) {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
 	}
@@ -268,5 +272,5 @@ func contains(values []string, wanted string) bool {
 }
 
 func printUsage(writer io.Writer) {
-	fmt.Fprintln(writer, "usage: attribution <init|plan|apply|verify|connect|runs upload|ping|live-check|version> [options]")
+	fmt.Fprintln(writer, "usage: attribution <init|plan|apply|probe import|verify|connect|runs upload|ping|live-check|version> [options]")
 }

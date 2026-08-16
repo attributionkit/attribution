@@ -56,8 +56,8 @@ func TestConnectUsesPossessionProofAndStoresOnlyNonSecretBinding(t *testing.T) {
 			json.NewEncoder(writer).Encode(map[string]any{
 				"authorizationSessionId":  "session-1",
 				"deviceCode":              testDeviceCode,
-				"verificationUri":         "https://app.attribution.sh/device",
-				"verificationUriComplete": "https://app.attribution.sh/device?user_code=ABCD-EFGH",
+				"verificationUri":         "http://localhost:3300/cli/authorize",
+				"verificationUriComplete": "http://localhost:3300/cli/authorize?user_code=ABCD-EFGH",
 				"userCode":                "ABCD-EFGH",
 				"expiresAt":               expires,
 				"pollIntervalSeconds":     1,
@@ -222,6 +222,29 @@ func TestCloudClientRejectsUnsafeBaseAndTypedErrors(t *testing.T) {
 	var apiError *CloudAPIError
 	if !errors.As(err, &apiError) || apiError.Status != http.StatusUnauthorized || apiError.Code != "invalid_token" {
 		t.Fatalf("error = %#v", err)
+	}
+}
+
+func TestCloudClientRejectsHTTPAuthorizationOutsideExplicitLoopbackMode(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusCreated)
+		json.NewEncoder(writer).Encode(map[string]any{
+			"authorizationSessionId": "session-1",
+			"deviceCode":             testDeviceCode,
+			"verificationUri":        "http://localhost:3300/cli/authorize",
+			"userCode":               "ABCD-EFGH",
+			"expiresAt":              time.Now().Add(time.Minute).UTC().Format(time.RFC3339),
+			"pollIntervalSeconds":    1,
+		})
+	}))
+	defer server.Close()
+	client, err := NewCloudClient(server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CreateAuthorizationSession(context.Background(), "sh.attribution.fixture"); err == nil || !strings.Contains(err.Error(), "unsafe browser authorization URL") {
+		t.Fatalf("expected unsafe browser URL rejection, got %v", err)
 	}
 }
 

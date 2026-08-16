@@ -6,7 +6,7 @@
   "environment": {
     "distribution": "dev",
     "protocol": "both",
-    "testMechanism": "simulator-mock",
+    "testMechanism": "simulator",
     "purchaseEnvironment": "none",
     "signingKey": "development",
     "revision": "0000000000000000000000000000000000000000"
@@ -30,6 +30,20 @@
       "collectionHealth": "unknown",
       "finality": "settled",
       "reason": "The generated wrapper is registered in app.json."
+    },
+    {
+      "checkId": "runtime.report-imported",
+      "ruleVersion": "1.0.0",
+      "section": "your-logic",
+      "execution": "succeeded",
+      "verdict": "pass",
+      "evidence": "simulator",
+      "basis": "measured",
+      "integrity": "copy_observed_unsigned",
+      "comparability": "exact",
+      "collectionHealth": "healthy",
+      "finality": "provisional",
+      "reason": "A fresh simulator report matched the current generated plan."
     }
   ]
 }

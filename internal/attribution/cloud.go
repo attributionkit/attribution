@@ -151,10 +151,14 @@ func validateCloudBaseURL(raw string) (string, error) {
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
 		return "", errors.New("hosted API base URL must not contain credentials, a path, query, or fragment")
 	}
-	if parsed.Scheme == "http" && parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" && parsed.Hostname() != "::1" {
+	if parsed.Scheme == "http" && !isLoopbackHostname(parsed.Hostname()) {
 		return "", errors.New("hosted API base URL must use HTTPS except on loopback")
 	}
 	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func isLoopbackHostname(hostname string) bool {
+	return hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1"
 }
 
 func (c *CloudClient) CreateAuthorizationSession(ctx context.Context, bundleID string) (AuthorizationSession, error) {
@@ -167,12 +171,15 @@ func (c *CloudClient) CreateAuthorizationSession(ctx context.Context, bundleID s
 	if result.AuthorizationSessionID == "" || len(result.DeviceCode) < 32 || result.VerificationURI == "" || result.UserCode == "" || result.ExpiresAt == "" {
 		return AuthorizationSession{}, errors.New("hosted API returned an incomplete authorization session")
 	}
+	base, _ := url.Parse(c.BaseURL)
+	allowLoopbackHTTP := base.Scheme == "http" && isLoopbackHostname(base.Hostname())
 	for _, target := range []string{result.VerificationURI, result.VerificationURIComplete} {
 		if target == "" {
 			continue
 		}
 		parsed, err := url.ParseRequestURI(target)
-		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		safeLoopbackHTTP := allowLoopbackHTTP && parsed.Scheme == "http" && isLoopbackHostname(parsed.Hostname())
+		if err != nil || (parsed.Scheme != "https" && !safeLoopbackHTTP) || parsed.Host == "" || parsed.User != nil {
 			return AuthorizationSession{}, errors.New("hosted API returned an unsafe browser authorization URL")
 		}
 	}

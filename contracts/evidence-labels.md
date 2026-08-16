@@ -11,3 +11,5 @@ Run-manifest schema `1.1.0` makes `collectionHealth` and `finality` required on 
 - `finality`: provisional or settled.
 
 Unknown and non-comparable rows remain in every export. No API parameter may silently remove them.
+
+A fresh, project-bound local simulator report uses `basis: measured`, `integrity: copy_observed_unsigned`, `comparability: exact`, `collectionHealth: healthy`, and `finality: provisional`. This combination proves only that the local app reached its conversion logic and returned a shape matching the current generated plan. It is never Device or Production evidence; an expired copy retains its provenance but becomes `collectionHealth: stale` with an `unknown` verdict.

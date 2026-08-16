@@ -3,6 +3,7 @@
 AttributionKit is an auditable attribution configuration compiler and Apple conversion runtime for iOS. The public client surface is deliberately small:
 
 - a Go CLI that plans, applies, and independently verifies repository-owned attribution state;
+- a local-only, expiring simulator-report importer that makes Your Logic agent-visible without promoting it to Device or Production;
 - `AttributionCore`, a SwiftPM/CocoaPods runtime shared by native apps;
 - `@attributionkit/expo`, an Expo Modules API bridge and config plugin;
 - versioned schemas, hosted-client contracts, rules, comparison-contract definitions, and golden vectors.
@@ -46,7 +47,9 @@ attribution init
 attribution plan
 attribution apply --branch
 npx expo prebuild --clean --platform ios
-attribution verify
+# Run the event in the simulator and save its exact report JSON, then:
+attribution probe import --framework expo --target simulator --report /path/to/runtime-report.json
+attribution verify --json
 ```
 
 See [the Expo guide](docs/expo-quickstart.md) for a runnable call site and what each verification layer proves.
@@ -84,6 +87,7 @@ examples/                   minimal Expo and SwiftUI call sites
 - Anything that runs in a customer app/repository or defines what evidence means is public here.
 - Hosted ingestion, tenancy, connectors, credentials, billing, anti-abuse logic, and operations remain private.
 - A static pass is not Apple evidence. The CLI keeps execution, verdict, evidence, basis, integrity, and comparability separate.
+- A runtime probe is a strict, project-bound, unsigned local copy that expires after 15 minutes and can affect only Your Logic.
 - Apple postback copies contain no direct user identifier; AttributionKit does not attempt to reidentify them or join them to user-level records.
 
 Licensed under Apache-2.0. Security reports should follow [SECURITY.md](SECURITY.md).

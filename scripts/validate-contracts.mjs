@@ -8,11 +8,13 @@ import { parse as parseYaml } from 'yaml';
 const root = resolve(import.meta.dirname, '..');
 const schemaPaths = [
   'contracts/attribution-config.schema.json',
+  'contracts/attribution-update-report.schema.json',
   'contracts/change-set.schema.json',
   'contracts/export-ledger-row.schema.json',
   'contracts/run-manifest.schema.json',
   'contracts/run-event.schema.json',
   'contracts/live-status.schema.json',
+  'contracts/runtime-probe.schema.json',
   'comparison-contracts/contract.schema.json',
 ];
 
@@ -26,9 +28,11 @@ for (const path of schemaPaths) {
 
 const fixtures = [
   ['https://attribution.sh/contracts/attribution-config.v1.schema.json', 'test-vectors/config-managed.json'],
+  ['https://attribution.sh/contracts/attribution-update-report.v1.schema.json', 'test-vectors/attribution-update-report-simulator.json'],
   ['https://attribution.sh/contracts/run-manifest.v1.schema.json', 'test-vectors/run-manifest-static.json'],
   ['https://attribution.sh/contracts/change-set.v1.schema.json', 'test-vectors/change-set-expo.json'],
   ['https://attribution.sh/contracts/live-status.v1.schema.json', 'test-vectors/live-status-connectivity.json'],
+  ['https://attribution.sh/contracts/runtime-probe.v1.schema.json', 'test-vectors/runtime-probe-simulator.json'],
   ['https://attribution.sh/comparison-contracts/contract.v1.schema.json', 'test-vectors/comparison-contract-meta-aak.json'],
 ];
 
@@ -79,6 +83,40 @@ if (!registrations.includes('./.attribution/plugin/withAttribution.js')) {
 const manifest = fixtureData.get('test-vectors/run-manifest-static.json');
 if (manifest.project.schemaHash !== expectedSchemaHash) {
   throw new Error('run-manifest schema hash drifted from the managed config vector');
+}
+
+const runtimeProbe = fixtureData.get('test-vectors/runtime-probe-simulator.json');
+const runtimeReport = fixtureData.get('test-vectors/attribution-update-report-simulator.json');
+if (Date.parse(runtimeProbe.expiresAt) - Date.parse(runtimeProbe.importedAt) !== 15 * 60 * 1000) {
+  throw new Error('runtime probe fixture must use the 15-minute freshness window');
+}
+if (
+  Date.parse(runtimeProbe.source.modifiedAt) < Date.parse(runtimeProbe.importedAt) - 15 * 60 * 1000 ||
+  Date.parse(runtimeProbe.source.modifiedAt) > Date.parse(runtimeProbe.importedAt) + 60 * 1000
+) {
+  throw new Error('runtime probe source timestamp is outside its accepted import window');
+}
+if (runtimeProbe.report.schemaHash !== runtimeProbe.project.schemaHash) {
+  throw new Error('runtime probe report must bind the project schema hash');
+}
+if (runtimeProbe.report.fineConversionValue !== config.schema.events.indexOf(runtimeProbe.report.event)) {
+  throw new Error('runtime probe event/value mapping drifted from the managed config vector');
+}
+if (
+  runtimeReport.event !== runtimeProbe.report.event ||
+  runtimeReport.fineConversionValue !== runtimeProbe.report.fineConversionValue ||
+  runtimeReport.schemaHash !== runtimeProbe.report.schemaHash ||
+  runtimeReport.adAttributionKit.status !== runtimeProbe.report.adAttributionKit.status ||
+  runtimeReport.skAdNetwork.status !== runtimeProbe.report.skAdNetwork.status
+) {
+  throw new Error('sanitized runtime probe vector drifted from its exact source report');
+}
+const runtimeReportBytes = await readFile(resolve(root, 'test-vectors/attribution-update-report-simulator.json'));
+if (
+  runtimeProbe.source.sha256 !== createHash('sha256').update(runtimeReportBytes).digest('hex') ||
+  runtimeProbe.source.byteLength !== runtimeReportBytes.byteLength
+) {
+  throw new Error('runtime probe source binding does not match the exact report vector bytes');
 }
 
 const comparison = fixtureData.get('test-vectors/comparison-contract-meta-aak.json');
@@ -161,6 +199,7 @@ const canonicalCheckIds = new Set([
   'meta.conversion-management-disabled',
   'secrets.none-in-client',
   'generated.manifest-hashes',
+  'runtime.report-imported',
   'device.aak-postback',
   'production.winning-copy',
 ]);

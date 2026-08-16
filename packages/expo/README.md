@@ -6,6 +6,8 @@ This is a client preview. The example `https://attribution.sh/` report endpoint 
 
 This package performs no networking, reads no identifiers, and emits no event stream. Calls to `record` update AdAttributionKit and SKAdNetwork independently through one semantic owner and return each Apple API result separately.
 
+The example app may explicitly print that returned report so a developer can save the exact JSON and run the local-only `attribution probe import --framework expo --target simulator --report <path>` command. Logging belongs to the host example, not this runtime package; the package still performs no network or telemetry work.
+
 The config plugin accepts an explicit `disableMetaConversionReporting` boolean. The CLI sets it from `conversionAuthority.owner`; it is independent of managed versus external setup so Meta can remain an ordinary event transport behind another declared authority.
 
 Install the release tarball, run `attribution init`, edit `.attribution/config.yaml`, then run `attribution apply --branch` and `npx expo prebuild --clean`:

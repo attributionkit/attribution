@@ -25,6 +25,7 @@ The lower cloud path is a separate private repository and deployment boundary. I
 5. `hidden` is never a metric basis. Basis, integrity, and comparability labels survive every format.
 6. Simulator results never claim an Apple protocol round trip.
 7. Generated changes are deterministic; unsupported shapes fail before mutation.
+8. Imported simulator reports are strict, SHA-256-bound local copies with a 15-minute lifetime. They may pass only Your Logic and remain `copy_observed_unsigned`.
 
 ## Release boundary
 

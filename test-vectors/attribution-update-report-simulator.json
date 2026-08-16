@@ -1,0 +1,12 @@
+{
+  "event": "install",
+  "fineConversionValue": 0,
+  "schemaHash": "3d8ac4b627c9ac1bfdbe44231ce4261f3a31eaa5f784c52f0f29d48a52481074",
+  "adAttributionKit": {
+    "status": "unavailable"
+  },
+  "skAdNetwork": {
+    "status": "failed",
+    "error": "The operation is unavailable in the iOS simulator."
+  }
+}

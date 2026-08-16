@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attribution.sh/contracts/runtime-probe.v1.schema.json",
+  "title": "AttributionKit local runtime probe artifact v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "framework", "target", "importedAt", "expiresAt", "source", "project", "report"],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["failed", "unavailable"] }
+      }
+    }
+  },
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "kind": { "const": "attribution-update-report" },
+    "framework": { "enum": ["expo", "swiftui"] },
+    "target": { "const": "simulator" },
+    "importedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "byteLength", "modifiedAt"],
+      "properties": {
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "byteLength": { "type": "integer", "minimum": 1, "maximum": 16384 },
+        "modifiedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundleId", "configHash", "schemaHash", "planHash", "revision"],
+      "properties": {
+        "bundleId": { "type": "string", "minLength": 3 },
+        "configHash": { "$ref": "#/$defs/sha256" },
+        "schemaHash": { "$ref": "#/$defs/sha256" },
+        "planHash": { "$ref": "#/$defs/sha256" },
+        "revision": { "type": ["string", "null"] }
+      }
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event", "fineConversionValue", "schemaHash", "adAttributionKit", "skAdNetwork"],
+      "properties": {
+        "event": { "enum": ["install", "trial", "purchase", "retention"] },
+        "fineConversionValue": { "type": "integer", "minimum": 0, "maximum": 63 },
+        "schemaHash": { "$ref": "#/$defs/sha256" },
+        "adAttributionKit": { "$ref": "#/$defs/backend" },
+        "skAdNetwork": { "$ref": "#/$defs/backend" }
+      }
+    }
+  }
+}

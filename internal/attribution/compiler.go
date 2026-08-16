@@ -243,7 +243,7 @@ func BuildPlan(root string) (Plan, error) {
 	manifestRaw = append(manifestRaw, '\n')
 
 	operations := []Operation{
-		{Path: ".attribution/.gitignore", Content: []byte("last-run.json\n")},
+		{Path: ".attribution/.gitignore", Content: []byte("last-run.json\nprobe.json\n")},
 		{Path: PluginPath, Content: wrapper},
 		{Path: ManifestPath, Content: manifestRaw},
 		{Path: "app.json", Content: appRaw},

@@ -54,6 +54,14 @@ func (e *ConfigValidationError) Error() string {
 	return "invalid " + ConfigPath + ": " + joinEnglish(e.Problems)
 }
 
+type ProbeValidationError struct {
+	Problem string
+}
+
+func (e *ProbeValidationError) Error() string {
+	return "runtime probe rejected: " + e.Problem + "; no probe artifact was written"
+}
+
 func joinEnglish(values []string) string {
 	if len(values) == 0 {
 		return "unknown error"

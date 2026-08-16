@@ -6,6 +6,7 @@ const (
 	PluginPath       = ".attribution/plugin/withAttribution.js"
 	ManifestPath     = ".attribution/manifest.json"
 	LastRunPath      = ".attribution/last-run.json"
+	ProbePath        = ".attribution/probe.json"
 	CloudConfigPath  = ".attribution/cloud.json"
 	AttributionPkg   = "@attributionkit/expo"
 	AttributionEntry = "@attributionkit/expo/app.plugin.js"

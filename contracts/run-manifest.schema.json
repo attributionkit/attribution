@@ -39,7 +39,7 @@
       "properties": {
         "distribution": { "enum": ["dev", "testflight", "app-store", "unknown"] },
         "protocol": { "enum": ["aak", "skan", "both", "none", "unknown"] },
-        "testMechanism": { "enum": ["none", "simulator-mock", "device-lab", "developer-settings"] },
+        "testMechanism": { "enum": ["none", "simulator", "simulator-mock", "device-lab", "developer-settings"] },
         "purchaseEnvironment": { "enum": ["none", "storekit-test", "sandbox", "production", "unknown"] },
         "signingKey": { "enum": ["development", "distribution", "unknown"] },
         "revision": { "type": ["string", "null"] }

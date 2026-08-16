@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added strict, local-only `probe import` support for fresh Expo and SwiftUI `AttributionUpdateReport` JSON, with a non-secret expiring artifact and an isolated Your Logic simulator result.
 - Added the explicit Go hosted-control-plane client: browser `connect`, exact-byte `runs upload`, connectivity-only `ping`, and labeled `live-check`.
 - Published the corresponding OpenAPI and agent-safe MCP contracts without adding networking or credentials to the Swift/Expo runtimes.
 - Promoted the versioned comparison contract with separate scopes, alignment rules, finality/materiality gates, and the fixed `unexplained_delta` residual.

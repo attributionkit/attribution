@@ -83,7 +83,10 @@ type observation struct {
 	pluginRaw     []byte
 	pluginMissing bool
 	manifest      *GeneratedManifest
+	manifestRaw   []byte
 	manifestError string
+	probe         *RuntimeProbeArtifact
+	probeError    string
 	secretHits    []string
 }
 
@@ -140,10 +143,14 @@ func RunVerify(root string, emit EmitFunc) (VerifyResult, error) {
 		} else {
 			result = evaluateRuleSafely(currentRule, obs)
 		}
-		result.CollectionHealth = "unknown"
-		result.Finality = "settled"
-		if result.Section == "device" || result.Section == "production" {
-			result.Finality = "provisional"
+		if result.CollectionHealth == "" {
+			result.CollectionHealth = "unknown"
+		}
+		if result.Finality == "" {
+			result.Finality = "settled"
+			if result.Section == "your-logic" || result.Section == "device" || result.Section == "production" {
+				result.Finality = "provisional"
+			}
 		}
 		results = append(results, result)
 		copy := result
@@ -165,11 +172,18 @@ func RunVerify(root string, emit EmitFunc) (VerifyResult, error) {
 			protocol = "aak"
 		}
 	}
+	testMechanism := "none"
+	for _, result := range results {
+		if result.CheckID == "runtime.report-imported" && result.Execution == "succeeded" && result.Verdict == "pass" {
+			testMechanism = "simulator"
+			break
+		}
+	}
 	manifest := RunManifest{
 		RunID: runID, SchemaVersion: SchemaVersion,
 		StartedAt: started.Format(time.RFC3339Nano), FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		Environment: EnvironmentAttributes{
-			Distribution: "dev", Protocol: protocol, TestMechanism: "none",
+			Distribution: "dev", Protocol: protocol, TestMechanism: testMechanism,
 			PurchaseEnvironment: "none", SigningKey: "unknown", Revision: gitRevision(root),
 		},
 		Project: projectIdentity,
@@ -216,7 +230,7 @@ func collectObservation(root string) (observation, error) {
 	if err != nil {
 		return observation{}, err
 	}
-	for _, path := range []string{ConfigPath, ".attribution/.gitignore", PluginPath, ManifestPath} {
+	for _, path := range []string{ConfigPath, ".attribution/.gitignore", PluginPath, ManifestPath, ProbePath} {
 		if err := validateSafeTarget(project.Root, path); err != nil {
 			return observation{}, err
 		}
@@ -254,8 +268,10 @@ func collectObservation(root string) (observation, error) {
 			obs.manifestError = "invalid " + ManifestPath + ": " + err.Error()
 		} else {
 			obs.manifest = &manifest
+			obs.manifestRaw = manifestRaw
 		}
 	}
+	obs.probe, obs.probeError = loadRuntimeProbe(project.Root)
 	hits, err := scanSecretShapedValues(project.Root)
 	if err != nil {
 		return observation{}, err
@@ -278,6 +294,7 @@ func verificationRules() []rule {
 		{id: "meta.conversion-management-disabled", version: "1.0.0", section: "config", evidence: "static", integrity: "generated", comparability: "none", evaluate: ruleMetaConversion},
 		{id: "secrets.none-in-client", version: "1.0.0", section: "build", evidence: "static", integrity: "observed_static", comparability: "none", evaluate: ruleNoSecrets},
 		{id: "generated.manifest-hashes", version: "1.0.0", section: "build", evidence: "static", integrity: "generated", comparability: "none", evaluate: ruleManifestHashes},
+		{id: "runtime.report-imported", version: "1.0.0", section: "your-logic", evidence: "simulator", integrity: "unknown", comparability: "none", evaluate: ruleRuntimeProbe},
 		{id: "device.aak-postback", version: "1.0.0", section: "device", evidence: "device-lab", integrity: "unknown", comparability: "none", evaluate: ruleDevicePending},
 		{id: "production.winning-copy", version: "1.0.0", section: "production", evidence: "apple", integrity: "unknown", comparability: "none", evaluate: ruleProductionPending},
 	}
@@ -523,6 +540,74 @@ func ruleManifestHashes(obs observation) CheckResult {
 	return CheckResult{Verdict: "pass", Reason: "observed config, schema, and generated wrapper hashes match the deterministic manifest"}
 }
 
+func ruleRuntimeProbe(obs observation) CheckResult {
+	if obs.probeError != "" {
+		return CheckResult{
+			Verdict:          "fail",
+			Basis:            "unknown",
+			Integrity:        "unknown",
+			Comparability:    "none",
+			CollectionHealth: "degraded",
+			Finality:         "provisional",
+			Reason:           "local runtime probe artifact is invalid: " + obs.probeError,
+			Remediation:      "Run `attribution probe import --framework <expo|swiftui> --target simulator --report <path>` with a fresh exact runtime report.",
+		}
+	}
+	if obs.probe == nil {
+		return CheckResult{
+			Verdict:          "unknown",
+			Basis:            "unknown",
+			Integrity:        "unknown",
+			Comparability:    "none",
+			CollectionHealth: "unknown",
+			Finality:         "provisional",
+			Reason:           "pending: no fresh native runtime report has been imported",
+			Remediation:      "Run the configured event in an iOS simulator, save the exact AttributionUpdateReport JSON, then run `attribution probe import`.",
+		}
+	}
+	if err := validateStoredProbe(*obs.probe, obs, time.Now().UTC()); err != nil {
+		var stale *staleProbeError
+		if errors.As(err, &stale) {
+			return CheckResult{
+				Verdict:          "unknown",
+				Basis:            "measured",
+				Integrity:        "copy_observed_unsigned",
+				Comparability:    "exact",
+				CollectionHealth: "stale",
+				Finality:         "provisional",
+				Reason:           "imported simulator runtime report is stale: " + err.Error(),
+				Remediation:      "Run the event again and import a fresh report before verifying.",
+			}
+		}
+		return CheckResult{
+			Verdict:          "fail",
+			Basis:            "unknown",
+			Integrity:        "unknown",
+			Comparability:    "none",
+			CollectionHealth: "degraded",
+			Finality:         "provisional",
+			Reason:           "imported simulator runtime report no longer validates: " + err.Error(),
+			Remediation:      "Run the configured event again and import a fresh exact report for the current generated plan.",
+		}
+	}
+	return CheckResult{
+		Verdict:          "pass",
+		Basis:            "measured",
+		Integrity:        "copy_observed_unsigned",
+		Comparability:    "exact",
+		CollectionHealth: "healthy",
+		Finality:         "provisional",
+		Reason: fmt.Sprintf(
+			"fresh %s simulator report matched the current generated plan: event %s mapped exactly to conversion value %d; AdAttributionKit=%s and SKAdNetwork=%s. This is unsigned local simulator evidence only",
+			obs.probe.Framework,
+			obs.probe.Report.Event,
+			obs.probe.Report.FineConversionValue,
+			obs.probe.Report.AdAttributionKit.Status,
+			obs.probe.Report.SKAdNetwork.Status,
+		),
+	}
+}
+
 func ruleDevicePending(observation) CheckResult {
 	return CheckResult{Verdict: "unknown", Reason: "pending: no physical device-lab run has been observed; static verification cannot prove an Apple round trip"}
 }
@@ -670,18 +755,34 @@ func validateRunManifest(manifest RunManifest) error {
 	if manifest.RunID == "" || manifest.SchemaVersion != SchemaVersion || manifest.StartedAt == "" || manifest.FinishedAt == "" {
 		return errors.New("missing run identity or timestamps")
 	}
+	allowedDistribution := map[string]bool{"dev": true, "testflight": true, "app-store": true, "unknown": true}
+	allowedProtocol := map[string]bool{"aak": true, "skan": true, "both": true, "none": true, "unknown": true}
+	allowedTestMechanism := map[string]bool{"none": true, "simulator": true, "simulator-mock": true, "device-lab": true, "developer-settings": true}
+	allowedPurchaseEnvironment := map[string]bool{"none": true, "storekit-test": true, "sandbox": true, "production": true, "unknown": true}
+	allowedSigningKey := map[string]bool{"development": true, "distribution": true, "unknown": true}
+	if !allowedDistribution[manifest.Environment.Distribution] || !allowedProtocol[manifest.Environment.Protocol] || !allowedTestMechanism[manifest.Environment.TestMechanism] || !allowedPurchaseEnvironment[manifest.Environment.PurchaseEnvironment] || !allowedSigningKey[manifest.Environment.SigningKey] {
+		return errors.New("invalid run environment")
+	}
+	for _, digest := range []*string{manifest.Project.ConfigHash, manifest.Project.SchemaHash} {
+		if digest != nil && !sha256Pattern.MatchString(*digest) {
+			return errors.New("invalid project digest")
+		}
+	}
 	allowedExecution := map[string]bool{"queued": true, "running": true, "succeeded": true, "error": true, "timed_out": true}
 	allowedVerdict := map[string]bool{"pass": true, "fail": true, "unknown": true, "not_applicable": true}
+	allowedSection := map[string]bool{"config": true, "build": true, "your-logic": true, "device": true, "production": true}
 	allowedEvidence := map[string]bool{"static": true, "build": true, "simulator": true, "device-lab": true, "apple": true, "provider": true}
 	allowedBasis := map[string]bool{"measured": true, "provider_modeled": true, "unknown": true}
 	allowedIntegrity := map[string]bool{"generated": true, "observed_static": true, "apple_core_verified": true, "copy_observed_unsigned": true, "provider_claimed": true, "modeled": true, "unknown": true}
 	allowedComparability := map[string]bool{"exact": true, "bounded": true, "directional": true, "none": true}
 	allowedCollectionHealth := map[string]bool{"healthy": true, "degraded": true, "stale": true, "unknown": true}
 	allowedFinality := map[string]bool{"provisional": true, "settled": true}
+	seen := map[string]bool{}
 	for _, result := range manifest.Results {
-		if result.CheckID == "" || result.RuleVersion == "" || result.Reason == "" || !allowedExecution[result.Execution] || !allowedVerdict[result.Verdict] || !allowedEvidence[result.Evidence] || !allowedBasis[result.Basis] || !allowedIntegrity[result.Integrity] || !allowedComparability[result.Comparability] || !allowedCollectionHealth[result.CollectionHealth] || !allowedFinality[result.Finality] {
+		if result.CheckID == "" || seen[result.CheckID] || result.RuleVersion == "" || result.Reason == "" || !allowedSection[result.Section] || !allowedExecution[result.Execution] || !allowedVerdict[result.Verdict] || !allowedEvidence[result.Evidence] || !allowedBasis[result.Basis] || !allowedIntegrity[result.Integrity] || !allowedComparability[result.Comparability] || !allowedCollectionHealth[result.CollectionHealth] || !allowedFinality[result.Finality] {
 			return fmt.Errorf("invalid result %q", result.CheckID)
 		}
+		seen[result.CheckID] = true
 	}
 	return nil
 }

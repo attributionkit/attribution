@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "attribution-update-report",
+  "framework": "expo",
+  "target": "simulator",
+  "importedAt": "2026-08-16T20:00:00Z",
+  "expiresAt": "2026-08-16T20:15:00Z",
+  "source": {
+    "sha256": "7f8a491266a6c7cce86cda99560caf365ddcdfe1d881c109c343d21fe2570ce6",
+    "byteLength": 308,
+    "modifiedAt": "2026-08-16T19:59:55Z"
+  },
+  "project": {
+    "bundleId": "sh.attribution.probe",
+    "configHash": "4cec9827000147cfb00137b862c011b9f1fbb3eea527322426041d1ab296db37",
+    "schemaHash": "3d8ac4b627c9ac1bfdbe44231ce4261f3a31eaa5f784c52f0f29d48a52481074",
+    "planHash": "2222222222222222222222222222222222222222222222222222222222222222",
+    "revision": "0000000000000000000000000000000000000000"
+  },
+  "report": {
+    "event": "install",
+    "fineConversionValue": 0,
+    "schemaHash": "3d8ac4b627c9ac1bfdbe44231ce4261f3a31eaa5f784c52f0f29d48a52481074",
+    "adAttributionKit": {
+      "status": "unavailable"
+    },
+    "skAdNetwork": {
+      "status": "failed"
+    }
+  }
+}

@@ -9,7 +9,7 @@
     "result": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["checkId", "ruleVersion", "section", "execution", "verdict", "evidence", "basis", "integrity", "comparability", "reason"],
+      "required": ["checkId", "ruleVersion", "section", "execution", "verdict", "evidence", "basis", "integrity", "comparability", "collectionHealth", "finality", "reason"],
       "properties": {
         "checkId": { "type": "string", "minLength": 1 },
         "ruleVersion": { "type": "string", "minLength": 1 },
@@ -20,6 +20,8 @@
         "basis": { "enum": ["measured", "provider_modeled", "unknown"] },
         "integrity": { "enum": ["generated", "observed_static", "apple_core_verified", "copy_observed_unsigned", "provider_claimed", "modeled", "unknown"] },
         "comparability": { "enum": ["exact", "bounded", "directional", "none"] },
+        "collectionHealth": { "enum": ["healthy", "degraded", "stale", "unknown"] },
+        "finality": { "enum": ["provisional", "settled"] },
         "reason": { "type": "string", "minLength": 1 },
         "remediation": { "type": "string", "minLength": 1 }
       }
@@ -27,7 +29,7 @@
   },
   "properties": {
     "runId": { "type": "string", "minLength": 1 },
-    "schemaVersion": { "const": "1.0.0" },
+    "schemaVersion": { "const": "1.1.0" },
     "startedAt": { "type": "string", "format": "date-time" },
     "finishedAt": { "type": "string", "format": "date-time" },
     "environment": {

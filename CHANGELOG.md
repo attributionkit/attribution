@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added the explicit Go hosted-control-plane client: browser `connect`, exact-byte `runs upload`, connectivity-only `ping`, and labeled `live-check`.
+- Published the corresponding OpenAPI and agent-safe MCP contracts without adding networking or credentials to the Swift/Expo runtimes.
+- Promoted the versioned comparison contract with separate scopes, alignment rules, finality/materiality gates, and the fixed `unexplained_delta` residual.
+- Bumped run-manifest semantics to `1.1.0`, requiring `collectionHealth` and `finality` on every result.
+
 ## 0.1.0-preview.1 - 2026-08-14
 
 - First public Go CLI with deterministic Expo init, plan, apply, and independent verify flows.

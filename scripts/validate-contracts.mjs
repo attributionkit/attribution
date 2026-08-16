@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
+import { parse as parseYaml } from 'yaml';
 
 const root = resolve(import.meta.dirname, '..');
 const schemaPaths = [
@@ -11,6 +12,7 @@ const schemaPaths = [
   'contracts/export-ledger-row.schema.json',
   'contracts/run-manifest.schema.json',
   'contracts/run-event.schema.json',
+  'contracts/live-status.schema.json',
   'comparison-contracts/contract.schema.json',
 ];
 
@@ -26,6 +28,8 @@ const fixtures = [
   ['https://attribution.sh/contracts/attribution-config.v1.schema.json', 'test-vectors/config-managed.json'],
   ['https://attribution.sh/contracts/run-manifest.v1.schema.json', 'test-vectors/run-manifest-static.json'],
   ['https://attribution.sh/contracts/change-set.v1.schema.json', 'test-vectors/change-set-expo.json'],
+  ['https://attribution.sh/contracts/live-status.v1.schema.json', 'test-vectors/live-status-connectivity.json'],
+  ['https://attribution.sh/comparison-contracts/contract.v1.schema.json', 'test-vectors/comparison-contract-meta-aak.json'],
 ];
 
 for (const schemaId of schemaPaths.map(async (path) => {
@@ -76,6 +80,74 @@ const manifest = fixtureData.get('test-vectors/run-manifest-static.json');
 if (manifest.project.schemaHash !== expectedSchemaHash) {
   throw new Error('run-manifest schema hash drifted from the managed config vector');
 }
+
+const comparison = fixtureData.get('test-vectors/comparison-contract-meta-aak.json');
+if (comparison.residualName !== 'unexplained_delta' || comparison.comparability !== 'directional') {
+  throw new Error('comparison fixture must preserve the unexplained residual and directional scope');
+}
+
+const liveStatus = fixtureData.get('test-vectors/live-status-connectivity.json');
+const validateLiveStatus = ajv.getSchema('https://attribution.sh/contracts/live-status.v1.schema.json');
+const falseProductionPass = structuredClone(liveStatus);
+falseProductionPass.sections.production.status = 'pass';
+if (validateLiveStatus(falseProductionPass)) {
+  throw new Error('live status accepted a Production pass without Production evidence');
+}
+const unverifiedProductionPass = structuredClone(falseProductionPass);
+unverifiedProductionPass.productionEvidence = true;
+if (validateLiveStatus(unverifiedProductionPass)) {
+  throw new Error('live status accepted Production evidence without a verified Apple receipt fact');
+}
+
+const openapi = parseYaml(await readFile(resolve(root, 'contracts/openapi.yaml'), 'utf8'));
+const expectedOperations = new Set([
+  'createAuthorizationSession',
+  'exchangeAuthorizationSession',
+  'linkApplication',
+  'uploadVerificationRun',
+  'createConnectivityPing',
+  'getLiveStatus',
+]);
+const observedOperations = new Set();
+for (const path of Object.values(openapi.paths)) {
+  for (const operation of Object.values(path)) {
+    if (operation && typeof operation === 'object' && operation.operationId) {
+      observedOperations.add(operation.operationId);
+    }
+  }
+}
+if (observedOperations.size !== expectedOperations.size || [...expectedOperations].some((id) => !observedOperations.has(id))) {
+  throw new Error(`OpenAPI operation set drifted: ${[...observedOperations].join(', ')}`);
+}
+const pingResponse = openapi.paths['/v1/applications/{applicationId}/pings'].post.responses['200'].content['application/json'].schema;
+if (pingResponse.properties.productionEvidence.const !== false) {
+  throw new Error('ping contract must explicitly prohibit Production evidence');
+}
+for (const operationPath of [
+  '/v1/applications/{applicationId}/verification-runs',
+  '/v1/applications/{applicationId}/pings',
+]) {
+  const refs = openapi.paths[operationPath].post.parameters.map((parameter) => parameter.$ref);
+  if (!refs.includes('#/components/parameters/ContentDigest') || !refs.includes('#/components/parameters/IdempotencyKey')) {
+    throw new Error(`${operationPath} must require Content-Digest and Idempotency-Key`);
+  }
+}
+
+const mcp = JSON.parse(await readFile(resolve(root, 'contracts/mcp-tools.json'), 'utf8'));
+const expectedTools = new Set([
+  'attribution_connect',
+  'attribution_connect_complete',
+  'attribution_upload_run',
+  'attribution_ping',
+  'attribution_live_check',
+]);
+if (mcp.tools.length !== expectedTools.size || mcp.tools.some((tool) => !expectedTools.has(tool.name))) {
+  throw new Error('MCP hosted-control-plane tool set drifted');
+}
+const mcpPublicSurface = JSON.stringify(mcp);
+if (mcpPublicSurface.includes('deviceCode') || mcpPublicSurface.includes('accessToken')) {
+  throw new Error('MCP tool schemas must not expose device codes or bearer tokens');
+}
 const canonicalCheckIds = new Set([
   'schema.valid',
   'expo.package-installed',
@@ -98,6 +170,9 @@ for (const result of manifest.results) {
   }
   if (result.evidence === 'static' && result.basis !== 'unknown') {
     throw new Error(`static result ${result.checkId} must not claim a measured basis`);
+  }
+  if (!result.collectionHealth || !result.finality) {
+    throw new Error(`result ${result.checkId} is missing collection health or finality`);
   }
 }
 

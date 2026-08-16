@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.0.0",
+  "contractId": "meta.aak.installs",
+  "contractVersion": "1.0.0",
+  "provider": "meta",
+  "metric": "winning_attributed_conversions",
+  "left": {
+    "source": "apple_aak",
+    "protocol": "aak",
+    "population": "winning attributed conversions",
+    "sequence": "all postback sequences",
+    "conversionType": "install",
+    "attributionWindow": { "kind": "rolling", "value": 30, "unit": "days" },
+    "timeAxis": "postback_time",
+    "timezone": "UTC",
+    "finality": "settled"
+  },
+  "right": {
+    "source": "meta_ads_insights",
+    "protocol": "provider_reporting_api",
+    "population": "provider-claimed attributed installs",
+    "sequence": "all reports",
+    "conversionType": "mobile_app_install",
+    "attributionWindow": { "kind": "rolling", "value": 7, "unit": "days" },
+    "timeAxis": "report_time",
+    "timezone": "UTC",
+    "finality": "settled"
+  },
+  "alignment": {
+    "protocol": { "relationship": "directional", "reason": "Apple protocol evidence and provider reporting are different instruments." },
+    "population": { "relationship": "bounded", "reason": "Both populations are attributed conversions but the provider claim can use modeled coverage." },
+    "sequence": { "relationship": "bounded", "reason": "The provider report does not expose the Apple postback sequence." },
+    "conversionType": { "relationship": "directional", "reason": "The provider install definition is not identical to an Apple winning conversion." },
+    "attributionWindow": { "relationship": "bounded", "reason": "The windows overlap but are not equal." },
+    "timeAxis": { "relationship": "directional", "reason": "Postback time and provider report time are different clocks." },
+    "timezone": { "relationship": "exact", "reason": "Both sides are normalized to UTC." },
+    "finality": { "relationship": "exact", "reason": "Both inputs must be settled before a verdict." }
+  },
+  "comparability": "directional",
+  "gates": {
+    "scope": { "requireComparable": true },
+    "finality": { "required": "settled" },
+    "materiality": { "absoluteDelta": 25, "relativeDelta": 0.1, "decisionMode": "exceeds_either" }
+  },
+  "residualName": "unexplained_delta",
+  "notes": "Example contract only. It permits a directional comparison and never upgrades a provider claim to Apple truth."
+}

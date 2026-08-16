@@ -1,5 +1,125 @@
 {
   "schemaVersion": "1.0.0",
-  "status": "deferred-m6",
-  "tools": []
+  "status": "public-client-contract-private-service",
+  "tools": [
+    {
+      "name": "attribution_connect",
+      "description": "Start the human browser authorization flow for a bundle identifier without exposing a device code or access token to the agent.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["bundleId"],
+        "properties": {
+          "bundleId": { "type": "string", "minLength": 3 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["authorizationSessionId", "verificationUri", "userCode", "expiresAt"],
+        "properties": {
+          "authorizationSessionId": { "type": "string" },
+          "verificationUri": { "type": "string", "format": "uri" },
+          "verificationUriComplete": { "type": "string", "format": "uri" },
+          "userCode": { "type": "string" },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    {
+      "name": "attribution_upload_run",
+      "description": "Upload an exact verification run manifest with its SHA-256 content digest and idempotency key.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["applicationId", "manifestBytesBase64", "contentDigest", "idempotencyKey"],
+        "properties": {
+          "applicationId": { "type": "string", "minLength": 1 },
+          "manifestBytesBase64": { "type": "string", "contentEncoding": "base64", "description": "Base64 of the exact last-run.json bytes; the server validates the decoded JSON against the public run-manifest schema." },
+          "contentDigest": { "type": "string", "pattern": "^sha-256=:[A-Za-z0-9+/]+={0,2}:$" },
+          "idempotencyKey": { "type": "string", "minLength": 16, "maxLength": 128 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["manifestUploadId", "status"],
+        "properties": {
+          "manifestUploadId": { "type": "string" },
+          "status": { "enum": ["accepted", "duplicate"] }
+        }
+      }
+    },
+    {
+      "name": "attribution_connect_complete",
+      "description": "Complete a human-approved browser authorization using server-retained possession proof. Never returns a bearer token or device code.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["authorizationSessionId"],
+        "properties": {
+          "authorizationSessionId": { "type": "string", "minLength": 1 }
+        }
+      },
+      "outputSchema": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status"],
+            "properties": { "status": { "const": "pending" } }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "applicationId", "organizationId", "bundleId"],
+            "properties": {
+              "status": { "const": "connected" },
+              "applicationId": { "type": "string", "minLength": 1 },
+              "organizationId": { "type": "string", "minLength": 1 },
+              "bundleId": { "type": "string", "minLength": 3 }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "attribution_ping",
+      "description": "Check authenticated control-plane reachability. This is never Apple, device, or Production evidence.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["applicationId", "idempotencyKey"],
+        "properties": {
+          "applicationId": { "type": "string", "minLength": 1 },
+          "idempotencyKey": { "type": "string", "minLength": 16, "maxLength": 128 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pingId", "status", "productionEvidence"],
+        "properties": {
+          "pingId": { "type": "string" },
+          "status": { "const": "reachable" },
+          "productionEvidence": { "const": false }
+        }
+      }
+    },
+    {
+      "name": "attribution_live_check",
+      "description": "Read the labeled Config, Build, Your Logic, Device, and Production status plus supporting facts.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["applicationId"],
+        "properties": {
+          "applicationId": { "type": "string", "minLength": 1 }
+        }
+      },
+      "outputSchema": {
+        "$ref": "https://attribution.sh/contracts/live-status.v1.schema.json"
+      }
+    }
+  ]
 }

@@ -5,7 +5,7 @@ AttributionKit is an auditable attribution configuration compiler and Apple conv
 - a Go CLI that plans, applies, and independently verifies repository-owned attribution state;
 - `AttributionCore`, a SwiftPM/CocoaPods runtime shared by native apps;
 - `@attributionkit/expo`, an Expo Modules API bridge and config plugin;
-- versioned schemas, rules, comparison-contract definitions, and golden vectors.
+- versioned schemas, hosted-client contracts, rules, comparison-contract definitions, and golden vectors.
 
 The runtime contains no identifiers, event stream, or network client. It maps a declared typed event to a fine conversion value, then updates AdAttributionKit and SKAdNetwork independently through one semantic owner. Apple API results remain separate and errors are returned instead of discarded.
 
@@ -13,7 +13,9 @@ The runtime contains no identifiers, event stream, or network client. It maps a 
 
 `v0.1.0-preview.1` is the first **client preview**, published as a GitHub pre-release. Setup and static verification work fully offline. Simulator calls prove app wiring and business-logic routing only; Apple postbacks require supported physical-device or production evidence and remain `unknown` until that evidence exists.
 
-**Do not ship the preview's `https://attribution.sh/` endpoint in a production app.** The receiver is not deployed yet, so Apple postbacks sent there would be lost. The hosted Vercel Blob → Workflow → PlanetScale → WorkOS evidence plane is a separate private cloud system and is not claimed by this release.
+**Do not ship the preview's `https://attribution.sh/` endpoint in a production app.** The receiver is not claimed by the current preview release. The public repository now defines an explicit hosted CLI client and its OpenAPI/MCP contracts, while the Vercel Blob → Workflow → PlanetScale → WorkOS implementation remains a separate private cloud system. This source change alone is not deployment evidence.
+
+The hosted client flow is documented in [docs/hosted-control-plane.md](docs/hosted-control-plane.md). It adds `connect`, `runs upload`, `ping`, and `live-check` to the Go CLI without adding networking to either app runtime.
 
 ## Install
 
@@ -68,7 +70,7 @@ cmd/attribution/            Go CLI entrypoint
 internal/attribution/       compiler and independent verification rules
 native/AttributionCore/     SwiftPM + CocoaPods runtime
 packages/expo/              Expo module + config plugin
-contracts/                  JSON Schema/export contracts; reserved API/MCP shells
+contracts/                  JSON Schema/export contracts and hosted API/MCP client contracts
 rules/core/                 published core rule inventory
 comparison-contracts/       comparison contract schema
 test-vectors/               cross-language golden vectors

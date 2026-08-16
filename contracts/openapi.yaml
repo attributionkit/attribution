@@ -1,7 +1,260 @@
 openapi: 3.1.0
 info:
-  title: AttributionKit API
-  version: 0.1.0-preview.1
-  description: Public contract shell. Hosted API operations begin at the read-only API milestone; no operation is claimed by v0.1.0-preview.1.
-paths: {}
-x-attributionkit-status: deferred-m6
+  title: AttributionKit hosted control-plane API
+  version: 1.0.0
+  description: >-
+    Public client contract for explicit CLI-to-cloud operations. These operations are not used by the
+    Swift or Expo runtime. A connectivity ping or manifest upload is supporting evidence only and can
+    never satisfy the Production section; only a cryptographically verified real Apple receipt can do that.
+servers:
+  - url: https://api.attribution.sh
+security:
+  - bearerAuth: []
+paths:
+  /v1/cli/authorization-sessions:
+    post:
+      operationId: createAuthorizationSession
+      summary: Start browser authorization for the CLI
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizationSessionRequest'
+      responses:
+        '201':
+          description: Device authorization session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationSession'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/cli/authorization-sessions/{authorizationSessionId}/exchange:
+    post:
+      operationId: exchangeAuthorizationSession
+      summary: Exchange possession proof after browser authorization
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [deviceCode]
+              properties:
+                deviceCode:
+                  type: string
+                  minLength: 32
+                  description: High-entropy possession proof returned only to the initiating CLI.
+      responses:
+        '200':
+          description: Browser authorization completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizedExchange'
+        '202':
+          description: Browser authorization is still pending
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status:
+                    const: pending
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/applications/link:
+    post:
+      operationId: linkApplication
+      summary: Link the configured bundle identifier to the authorized organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [bundleId]
+              properties:
+                bundleId:
+                  type: string
+                  pattern: '^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$'
+      responses:
+        '200':
+          description: Canonical application link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationLink'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/applications/{applicationId}/verification-runs:
+    post:
+      operationId: uploadVerificationRun
+      summary: Upload the exact last-run manifest bytes
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+        - $ref: '#/components/parameters/ContentDigest'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/vnd.attributionkit.run-manifest+json:
+            schema:
+              $ref: 'https://attribution.sh/contracts/run-manifest.v1.schema.json'
+      responses:
+        '202':
+          description: Exact manifest accepted for durable processing
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [manifestUploadId, status]
+                properties:
+                  manifestUploadId: { type: string, minLength: 1 }
+                  status: { enum: [accepted, duplicate] }
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/applications/{applicationId}/pings:
+    post:
+      operationId: createConnectivityPing
+      summary: Record authenticated control-plane reachability
+      description: A ping never represents Apple, device, or Production evidence.
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+        - $ref: '#/components/parameters/ContentDigest'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, cliVersion]
+              properties:
+                kind: { const: cli-connectivity }
+                cliVersion: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Reachability recorded as supporting evidence only
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [pingId, status, productionEvidence]
+                properties:
+                  pingId: { type: string, minLength: 1 }
+                  status: { const: reachable }
+                  productionEvidence: { const: false }
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/applications/{applicationId}/live-status:
+    get:
+      operationId: getLiveStatus
+      summary: Read the unified five-section live verification status
+      parameters:
+        - $ref: '#/components/parameters/ApplicationId'
+      responses:
+        '200':
+          description: Labeled status and supporting facts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiveStatus'
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    AuthorizationSessionId:
+      name: authorizationSessionId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    ApplicationId:
+      name: applicationId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    ContentDigest:
+      name: Content-Digest
+      in: header
+      required: true
+      description: RFC 9530 SHA-256 digest of the exact request body, formatted as sha-256=:base64:.
+      schema: { type: string, pattern: '^sha-256=:[A-Za-z0-9+/]+={0,2}:$' }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 16, maxLength: 128 }
+  responses:
+    Error:
+      description: Structured API error
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [code, message]
+            properties:
+              code: { type: string, minLength: 1 }
+              message: { type: string, minLength: 1 }
+  schemas:
+    AuthorizationSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [cliVersion, project]
+      properties:
+        cliVersion: { type: string, minLength: 1 }
+        project:
+          type: object
+          additionalProperties: false
+          required: [bundleId]
+          properties:
+            bundleId: { type: string, minLength: 3 }
+    AuthorizationSession:
+      type: object
+      additionalProperties: false
+      required: [authorizationSessionId, deviceCode, verificationUri, userCode, expiresAt, pollIntervalSeconds]
+      properties:
+        authorizationSessionId: { type: string, minLength: 1 }
+        deviceCode: { type: string, minLength: 32, writeOnly: true }
+        verificationUri: { type: string, format: uri }
+        verificationUriComplete: { type: string, format: uri }
+        userCode: { type: string, minLength: 4 }
+        expiresAt: { type: string, format: date-time }
+        pollIntervalSeconds: { type: integer, minimum: 1, maximum: 30 }
+    AuthorizedExchange:
+      type: object
+      additionalProperties: false
+      required: [status, accessToken, organizationId, applicationId]
+      properties:
+        status: { const: authorized }
+        accessToken: { type: string, minLength: 32, writeOnly: true }
+        organizationId: { type: string, minLength: 1 }
+        applicationId: { type: string, minLength: 1 }
+    ApplicationLink:
+      type: object
+      additionalProperties: false
+      required: [applicationId, organizationId, bundleId]
+      properties:
+        applicationId: { type: string, minLength: 1 }
+        organizationId: { type: string, minLength: 1 }
+        bundleId: { type: string, minLength: 3 }
+    LiveStatus:
+      $ref: 'https://attribution.sh/contracts/live-status.v1.schema.json'
+x-attributionkit-status: public-client-contract-private-service

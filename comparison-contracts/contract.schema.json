@@ -1,21 +1,187 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://attribution.sh/comparison-contracts/contract.v1.schema.json",
+  "title": "AttributionKit versioned comparison contract v1",
+  "description": "A provider-specific contract that aligns scope before any delta is calculated.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "version", "provider", "protocol", "population", "sequence", "conversionType", "attributionWindow", "timeAxis", "timezone", "finality", "comparability"],
+  "required": [
+    "schemaVersion",
+    "contractId",
+    "contractVersion",
+    "provider",
+    "metric",
+    "left",
+    "right",
+    "alignment",
+    "comparability",
+    "gates",
+    "residualName"
+  ],
+  "$defs": {
+    "attributionWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value", "unit"],
+      "properties": {
+        "kind": { "enum": ["rolling", "calendar", "not_applicable"] },
+        "value": { "type": ["integer", "null"], "minimum": 1 },
+        "unit": { "enum": ["hours", "days", "not_applicable"] }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "not_applicable" } },
+            "required": ["kind"]
+          },
+          "then": {
+            "properties": {
+              "value": { "type": "null" },
+              "unit": { "const": "not_applicable" }
+            }
+          },
+          "else": {
+            "properties": {
+              "value": { "type": "integer", "minimum": 1 },
+              "unit": { "enum": ["hours", "days"] }
+            }
+          }
+        }
+      ]
+    },
+    "sourceScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "protocol",
+        "population",
+        "sequence",
+        "conversionType",
+        "attributionWindow",
+        "timeAxis",
+        "timezone",
+        "finality"
+      ],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "protocol": { "type": "string", "minLength": 1 },
+        "population": { "type": "string", "minLength": 1 },
+        "sequence": { "type": "string", "minLength": 1 },
+        "conversionType": { "type": "string", "minLength": 1 },
+        "attributionWindow": { "$ref": "#/$defs/attributionWindow" },
+        "timeAxis": {
+          "enum": [
+            "event_time",
+            "conversion_time",
+            "postback_time",
+            "receipt_time",
+            "report_time"
+          ]
+        },
+        "timezone": { "type": "string", "minLength": 1 },
+        "finality": {
+          "$ref": "https://attribution.sh/contracts/export-ledger-row.v1.schema.json#/properties/finality"
+        }
+      }
+    },
+    "alignmentRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relationship", "reason"],
+      "properties": {
+        "relationship": {
+          "$ref": "https://attribution.sh/contracts/export-ledger-row.v1.schema.json#/properties/comparability"
+        },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "materialityGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decisionMode"],
+      "properties": {
+        "absoluteDelta": { "type": "number", "minimum": 0 },
+        "relativeDelta": { "type": "number", "minimum": 0 },
+        "decisionMode": { "enum": ["exceeds_either", "exceeds_both"] }
+      },
+      "anyOf": [
+        {
+          "required": ["absoluteDelta"],
+          "properties": { "absoluteDelta": true }
+        },
+        {
+          "required": ["relativeDelta"],
+          "properties": { "relativeDelta": true }
+        }
+      ]
+    }
+  },
   "properties": {
-    "id": { "type": "string", "minLength": 1 },
-    "version": { "type": "string", "minLength": 1 },
+    "schemaVersion": { "const": "1.0.0" },
+    "contractId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "contractVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
     "provider": { "type": "string", "minLength": 1 },
-    "protocol": { "type": "string", "minLength": 1 },
-    "population": { "type": "string", "minLength": 1 },
-    "sequence": { "type": "string", "minLength": 1 },
-    "conversionType": { "type": "string", "minLength": 1 },
-    "attributionWindow": { "type": "string", "minLength": 1 },
-    "timeAxis": { "type": "string", "minLength": 1 },
-    "timezone": { "type": "string", "minLength": 1 },
-    "finality": { "type": "string", "minLength": 1 },
-    "comparability": { "enum": ["exact", "bounded", "directional", "none"] }
+    "metric": { "type": "string", "minLength": 1 },
+    "left": { "$ref": "#/$defs/sourceScope" },
+    "right": { "$ref": "#/$defs/sourceScope" },
+    "alignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "population",
+        "sequence",
+        "conversionType",
+        "attributionWindow",
+        "timeAxis",
+        "timezone",
+        "finality"
+      ],
+      "properties": {
+        "protocol": { "$ref": "#/$defs/alignmentRule" },
+        "population": { "$ref": "#/$defs/alignmentRule" },
+        "sequence": { "$ref": "#/$defs/alignmentRule" },
+        "conversionType": { "$ref": "#/$defs/alignmentRule" },
+        "attributionWindow": { "$ref": "#/$defs/alignmentRule" },
+        "timeAxis": { "$ref": "#/$defs/alignmentRule" },
+        "timezone": { "$ref": "#/$defs/alignmentRule" },
+        "finality": { "$ref": "#/$defs/alignmentRule" }
+      }
+    },
+    "comparability": {
+      "$ref": "https://attribution.sh/contracts/export-ledger-row.v1.schema.json#/properties/comparability"
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "finality", "materiality"],
+      "properties": {
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requireComparable"],
+          "properties": {
+            "requireComparable": { "const": true }
+          }
+        },
+        "finality": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required"],
+          "properties": {
+            "required": {
+              "$ref": "https://attribution.sh/contracts/export-ledger-row.v1.schema.json#/properties/finality"
+            }
+          }
+        },
+        "materiality": { "$ref": "#/$defs/materialityGate" }
+      }
+    },
+    "residualName": { "const": "unexplained_delta" },
+    "notes": { "type": "string", "minLength": 1 }
   }
 }

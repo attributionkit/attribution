@@ -19,17 +19,19 @@ import (
 )
 
 type CheckResult struct {
-	CheckID       string `json:"checkId"`
-	RuleVersion   string `json:"ruleVersion"`
-	Section       string `json:"section"`
-	Execution     string `json:"execution"`
-	Verdict       string `json:"verdict"`
-	Evidence      string `json:"evidence"`
-	Basis         string `json:"basis"`
-	Integrity     string `json:"integrity"`
-	Comparability string `json:"comparability"`
-	Reason        string `json:"reason"`
-	Remediation   string `json:"remediation,omitempty"`
+	CheckID          string `json:"checkId"`
+	RuleVersion      string `json:"ruleVersion"`
+	Section          string `json:"section"`
+	Execution        string `json:"execution"`
+	Verdict          string `json:"verdict"`
+	Evidence         string `json:"evidence"`
+	Basis            string `json:"basis"`
+	Integrity        string `json:"integrity"`
+	Comparability    string `json:"comparability"`
+	CollectionHealth string `json:"collectionHealth"`
+	Finality         string `json:"finality"`
+	Reason           string `json:"reason"`
+	Remediation      string `json:"remediation,omitempty"`
 }
 
 type EnvironmentAttributes struct {
@@ -137,6 +139,11 @@ func RunVerify(root string, emit EmitFunc) (VerifyResult, error) {
 			}
 		} else {
 			result = evaluateRuleSafely(currentRule, obs)
+		}
+		result.CollectionHealth = "unknown"
+		result.Finality = "settled"
+		if result.Section == "device" || result.Section == "production" {
+			result.Finality = "provisional"
 		}
 		results = append(results, result)
 		copy := result
@@ -669,8 +676,10 @@ func validateRunManifest(manifest RunManifest) error {
 	allowedBasis := map[string]bool{"measured": true, "provider_modeled": true, "unknown": true}
 	allowedIntegrity := map[string]bool{"generated": true, "observed_static": true, "apple_core_verified": true, "copy_observed_unsigned": true, "provider_claimed": true, "modeled": true, "unknown": true}
 	allowedComparability := map[string]bool{"exact": true, "bounded": true, "directional": true, "none": true}
+	allowedCollectionHealth := map[string]bool{"healthy": true, "degraded": true, "stale": true, "unknown": true}
+	allowedFinality := map[string]bool{"provisional": true, "settled": true}
 	for _, result := range manifest.Results {
-		if result.CheckID == "" || result.RuleVersion == "" || result.Reason == "" || !allowedExecution[result.Execution] || !allowedVerdict[result.Verdict] || !allowedEvidence[result.Evidence] || !allowedBasis[result.Basis] || !allowedIntegrity[result.Integrity] || !allowedComparability[result.Comparability] {
+		if result.CheckID == "" || result.RuleVersion == "" || result.Reason == "" || !allowedExecution[result.Execution] || !allowedVerdict[result.Verdict] || !allowedEvidence[result.Evidence] || !allowedBasis[result.Basis] || !allowedIntegrity[result.Integrity] || !allowedComparability[result.Comparability] || !allowedCollectionHealth[result.CollectionHealth] || !allowedFinality[result.Finality] {
 			return fmt.Errorf("invalid result %q", result.CheckID)
 		}
 	}

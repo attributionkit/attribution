@@ -10,7 +10,7 @@
       "properties": {
         "type": { "const": "run_started" },
         "runId": { "type": "string" },
-        "schemaVersion": { "const": "1.0.0" }
+        "schemaVersion": { "const": "1.1.0" }
       }
     },
     {

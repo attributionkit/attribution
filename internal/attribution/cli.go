@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+var cloudCommands = map[string]bool{"connect": true, "ping": true, "live-check": true, "runs": true}
+
 type cliOptions struct {
 	project    string
 	json       bool
@@ -29,6 +31,9 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintln(stdout, "attribution "+Version)
 		return 0
+	}
+	if cloudCommands[args[0]] {
+		return runCloudCLI(args, stdout, stderr)
 	}
 	command := args[0]
 	if command != "init" && command != "plan" && command != "apply" && command != "verify" {
@@ -247,7 +252,7 @@ func renderHumanResult(writer io.Writer, result CheckResult) {
 	} else if result.Verdict == "fail" {
 		mark = "✗"
 	}
-	fmt.Fprintf(writer, "  %s %s  [execution: %s · verdict: %s · evidence: %s · basis: %s · integrity: %s · comparability: %s]\n      %s\n", mark, result.CheckID, result.Execution, result.Verdict, result.Evidence, result.Basis, result.Integrity, result.Comparability, result.Reason)
+	fmt.Fprintf(writer, "  %s %s  [execution: %s · verdict: %s · evidence: %s · basis: %s · integrity: %s · comparability: %s · collection: %s · finality: %s]\n      %s\n", mark, result.CheckID, result.Execution, result.Verdict, result.Evidence, result.Basis, result.Integrity, result.Comparability, result.CollectionHealth, result.Finality, result.Reason)
 	if result.Remediation != "" {
 		fmt.Fprintln(writer, "      → "+result.Remediation)
 	}
@@ -263,5 +268,5 @@ func contains(values []string, wanted string) bool {
 }
 
 func printUsage(writer io.Writer) {
-	fmt.Fprintln(writer, "usage: attribution <init|plan|apply|verify|version> [--project <dir>] [--json] [--branch [name]]")
+	fmt.Fprintln(writer, "usage: attribution <init|plan|apply|verify|connect|runs upload|ping|live-check|version> [options]")
 }

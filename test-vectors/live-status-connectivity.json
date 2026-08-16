@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "1.0.0",
+  "applicationId": "app_example",
+  "productionEvidence": false,
+  "sections": {
+    "config": {
+      "status": "pass",
+      "evidence": "static",
+      "basis": "unknown",
+      "integrity": "observed_static",
+      "comparability": "none",
+      "collectionHealth": "healthy",
+      "finality": "settled",
+      "facts": {
+        "connectivity": {
+          "status": "pass",
+          "evidence": "ping",
+          "basis": "measured",
+          "integrity": "observed_static",
+          "comparability": "none",
+          "collectionHealth": "healthy",
+          "finality": "provisional",
+          "observedAt": "2026-08-16T20:00:00Z",
+          "detail": "Authenticated CLI-to-control-plane reachability only."
+        }
+      }
+    },
+    "build": {
+      "status": "pass",
+      "evidence": "uploaded-manifest",
+      "basis": "unknown",
+      "integrity": "generated",
+      "comparability": "none",
+      "collectionHealth": "healthy",
+      "finality": "settled",
+      "facts": {
+        "manifest": {
+          "status": "pass",
+          "evidence": "uploaded-manifest",
+          "basis": "unknown",
+          "integrity": "generated",
+          "comparability": "none",
+          "collectionHealth": "healthy",
+          "finality": "settled",
+          "observedAt": "2026-08-16T20:00:01Z",
+          "detail": "Exact bytes matched Content-Digest and the public run-manifest schema."
+        }
+      }
+    },
+    "your-logic": {
+      "status": "unknown",
+      "evidence": "none",
+      "basis": "unknown",
+      "integrity": "unknown",
+      "comparability": "none",
+      "collectionHealth": "unknown",
+      "finality": "provisional"
+    },
+    "device": {
+      "status": "unknown",
+      "evidence": "none",
+      "basis": "unknown",
+      "integrity": "unknown",
+      "comparability": "none",
+      "collectionHealth": "unknown",
+      "finality": "provisional"
+    },
+    "production": {
+      "status": "unknown",
+      "evidence": "none",
+      "basis": "unknown",
+      "integrity": "unknown",
+      "comparability": "none",
+      "collectionHealth": "unknown",
+      "finality": "provisional"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "runId": "018f0000-0000-7000-8000-000000000001",
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "startedAt": "2026-08-14T20:00:00Z",
   "finishedAt": "2026-08-14T20:00:01Z",
   "environment": {
@@ -27,6 +27,8 @@
       "basis": "unknown",
       "integrity": "observed_static",
       "comparability": "none",
+      "collectionHealth": "unknown",
+      "finality": "settled",
       "reason": "The generated wrapper is registered in app.json."
     }
   ]

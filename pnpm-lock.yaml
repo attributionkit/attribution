@@ -10,6 +10,9 @@ importers:
       ajv-formats:
         specifier: ^3.0.1
         version: 3.0.1(ajv@8.17.1)
+      yaml:
+        specifier: ^2.8.2
+        version: 2.9.0
 
   packages/expo:
     devDependencies:

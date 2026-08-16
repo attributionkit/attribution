@@ -1,11 +1,12 @@
 package attribution
 
 const (
-	SchemaVersion    = "1.0.0"
+	SchemaVersion    = "1.1.0"
 	ConfigPath       = ".attribution/config.yaml"
 	PluginPath       = ".attribution/plugin/withAttribution.js"
 	ManifestPath     = ".attribution/manifest.json"
 	LastRunPath      = ".attribution/last-run.json"
+	CloudConfigPath  = ".attribution/cloud.json"
 	AttributionPkg   = "@attributionkit/expo"
 	AttributionEntry = "@attributionkit/expo/app.plugin.js"
 	ReleaseBaseURL   = "https://github.com/attributionkit/attribution/releases/download"

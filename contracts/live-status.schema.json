@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attribution.sh/contracts/live-status.v1.schema.json",
+  "title": "AttributionKit unified live status v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "applicationId", "productionEvidence", "sections"],
+  "$defs": {
+    "labels": {
+      "type": "object",
+      "required": ["basis", "integrity", "comparability", "collectionHealth", "finality"],
+      "properties": {
+        "basis": { "enum": ["measured", "provider_modeled", "unknown"] },
+        "integrity": {
+          "enum": ["generated", "observed_static", "apple_core_verified", "copy_observed_unsigned", "provider_claimed", "modeled", "unknown"]
+        },
+        "comparability": { "enum": ["exact", "bounded", "directional", "none"] },
+        "collectionHealth": { "enum": ["healthy", "degraded", "stale", "unknown"] },
+        "finality": { "enum": ["provisional", "settled"] }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence", "basis", "integrity", "comparability", "collectionHealth", "finality"],
+      "properties": {
+        "status": { "enum": ["pass", "fail", "unknown", "not_applicable"] },
+        "evidence": { "type": "string", "minLength": 1 },
+        "basis": { "enum": ["measured", "provider_modeled", "unknown"] },
+        "integrity": {
+          "enum": ["generated", "observed_static", "apple_core_verified", "copy_observed_unsigned", "provider_claimed", "modeled", "unknown"]
+        },
+        "comparability": { "enum": ["exact", "bounded", "directional", "none"] },
+        "collectionHealth": { "enum": ["healthy", "degraded", "stale", "unknown"] },
+        "finality": { "enum": ["provisional", "settled"] },
+        "observedAt": { "type": "string", "format": "date-time" },
+        "detail": { "type": "string", "minLength": 1 }
+      }
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence", "basis", "integrity", "comparability", "collectionHealth", "finality"],
+      "properties": {
+        "status": { "enum": ["pass", "fail", "unknown", "not_applicable"] },
+        "evidence": { "type": "string", "minLength": 1 },
+        "basis": { "enum": ["measured", "provider_modeled", "unknown"] },
+        "integrity": {
+          "enum": ["generated", "observed_static", "apple_core_verified", "copy_observed_unsigned", "provider_claimed", "modeled", "unknown"]
+        },
+        "comparability": { "enum": ["exact", "bounded", "directional", "none"] },
+        "collectionHealth": { "enum": ["healthy", "degraded", "stale", "unknown"] },
+        "finality": { "enum": ["provisional", "settled"] },
+        "facts": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/fact" }
+        }
+      }
+    }
+  },
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "applicationId": { "type": "string", "minLength": 1 },
+    "productionEvidence": { "type": "boolean" },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["config", "build", "your-logic", "device", "production"],
+      "properties": {
+        "config": { "$ref": "#/$defs/section" },
+        "build": { "$ref": "#/$defs/section" },
+        "your-logic": { "$ref": "#/$defs/section" },
+        "device": { "$ref": "#/$defs/section" },
+        "production": { "$ref": "#/$defs/section" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": { "productionEvidence": { "const": true } },
+        "required": ["productionEvidence"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "sections": {
+            "type": "object",
+            "properties": {
+              "production": {
+                "type": "object",
+                "required": ["facts"],
+                "properties": {
+                  "status": { "const": "pass" },
+                  "facts": {
+                    "type": "object",
+                    "required": ["appleReceipt"],
+                    "properties": {
+                      "appleReceipt": {
+                        "type": "object",
+                        "properties": {
+                          "status": { "const": "pass" },
+                          "basis": { "const": "measured" },
+                          "integrity": { "const": "apple_core_verified" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "type": "object",
+        "properties": {
+          "sections": {
+            "type": "object",
+            "properties": {
+              "production": {
+                "type": "object",
+                "properties": {
+                  "status": { "enum": ["fail", "unknown", "not_applicable"] }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

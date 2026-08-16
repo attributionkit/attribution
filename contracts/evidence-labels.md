@@ -2,6 +2,8 @@
 
 Labels are mandatory and may not be stripped by a renderer, API filter, webhook, warehouse export, or CLI format.
 
+Run-manifest schema `1.1.0` makes `collectionHealth` and `finality` required on every result. This is an explicit schema-version change from the preview's `1.0.0` result shape.
+
 - `basis`: `measured`, `provider_modeled`, or `unknown`. `hidden` is presentation state, never a basis.
 - `integrity`: identifies what authenticated or produced a field. Apple-signed JWS fields and unsigned copy-envelope fields are labeled separately.
 - `comparability`: `exact`, `bounded`, `directional`, or `none`, and exists only under a versioned comparison contract.

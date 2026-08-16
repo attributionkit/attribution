@@ -1,4 +1,4 @@
-# Core rule bundle v0.1.0-preview.2
+# Core rule bundle v0.1.0-preview.3
 
 The Go CLI implements the versioned local rules. Each result retains execution, verdict, evidence, basis, integrity, and comparability independently.
 

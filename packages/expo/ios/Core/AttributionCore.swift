@@ -151,7 +151,7 @@ public struct AttributionUpdateReport: Codable, Equatable, Sendable {
 }
 
 public enum AttributionCore {
-    public static let version = "0.1.0-preview.2"
+    public static let version = "0.1.0-preview.3"
 
     public static func conversionValue(
         for event: String,

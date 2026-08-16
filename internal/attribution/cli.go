@@ -32,6 +32,9 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "attribution "+Version)
 		return 0
 	}
+	if args[0] == "agent" {
+		return runAgentCLI(args, stdout, stderr)
+	}
 	if cloudCommands[args[0]] {
 		return runCloudCLI(args, stdout, stderr)
 	}
@@ -272,5 +275,5 @@ func contains(values []string, wanted string) bool {
 }
 
 func printUsage(writer io.Writer) {
-	fmt.Fprintln(writer, "usage: attribution <init|plan|apply|probe import|verify|connect|runs upload|ping|live-check|version> [options]")
+	fmt.Fprintln(writer, "usage: attribution <init|plan|apply|probe import|verify|connect|runs upload|ping|live-check|agent setup|agent serve|version> [options]")
 }

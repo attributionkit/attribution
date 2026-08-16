@@ -17,12 +17,29 @@ import (
 type memoryTokenStore struct {
 	reference string
 	token     string
+	gets      int
 }
 
 const (
 	testDeviceCode  = "test-device-code-0123456789-abcdefghijklmnop"
 	testAccessToken = "test-access-token-0123456789-abcdef"
 )
+
+func testCloudBinding(t *testing.T, baseURL, organizationID, applicationID, bundleID string) CloudBinding {
+	t.Helper()
+	reference, normalized, err := cloudCredentialReference(baseURL, organizationID, applicationID, bundleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return CloudBinding{
+		SchemaVersion:  cloudBindingVersion,
+		BaseURL:        normalized,
+		OrganizationID: organizationID,
+		ApplicationID:  applicationID,
+		BundleID:       bundleID,
+		CredentialRef:  reference,
+	}
+}
 
 func (s *memoryTokenStore) Set(reference, token string) error {
 	s.reference = reference
@@ -31,6 +48,7 @@ func (s *memoryTokenStore) Set(reference, token string) error {
 }
 
 func (s *memoryTokenStore) Get(reference string) (string, error) {
+	s.gets++
 	return s.token, nil
 }
 
@@ -39,6 +57,7 @@ func TestConnectUsesPossessionProofAndStoresOnlyNonSecretBinding(t *testing.T) {
 	store := &memoryTokenStore{}
 	expires := time.Now().Add(time.Minute).UTC().Format(time.RFC3339)
 	requests := 0
+	exchangeRequests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requests++
 		writer.Header().Set("Content-Type", "application/json")
@@ -63,10 +82,17 @@ func TestConnectUsesPossessionProofAndStoresOnlyNonSecretBinding(t *testing.T) {
 				"pollIntervalSeconds":     1,
 			})
 		case "/v1/cli/authorization-sessions/session-1/exchange":
+			exchangeRequests++
 			var body map[string]string
 			decodeTestRequest(t, request, &body)
 			if body["deviceCode"] != testDeviceCode {
 				t.Fatalf("device code not returned as possession proof: %#v", body)
+			}
+			if exchangeRequests == 1 {
+				writer.Header().Set("Retry-After", "4")
+				writer.WriteHeader(http.StatusTooManyRequests)
+				json.NewEncoder(writer).Encode(map[string]string{"status": "slow_down"})
+				return
 			}
 			json.NewEncoder(writer).Encode(map[string]any{
 				"status": "authorized", "accessToken": testAccessToken,
@@ -87,13 +113,25 @@ func TestConnectUsesPossessionProofAndStoresOnlyNonSecretBinding(t *testing.T) {
 
 	options := cloudCLIOptions{project: root, baseURL: server.URL, noBrowser: true}
 	var stdout, stderr strings.Builder
-	if code := runConnect(context.Background(), root, options, store, &stdout, &stderr); code != 0 {
+	var waits []time.Duration
+	wait := func(_ context.Context, delay time.Duration) error {
+		waits = append(waits, delay)
+		return nil
+	}
+	if code := runConnectWithWait(context.Background(), root, options, store, &stdout, &stderr, wait); code != 0 {
 		t.Fatalf("connect code=%d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
 	}
-	if requests != 3 {
+	if requests != 4 {
 		t.Fatalf("request count = %d", requests)
 	}
-	if store.reference != "application:app-1" || store.token != testAccessToken {
+	if len(waits) != 2 || waits[0] != time.Second || waits[1] != 4*time.Second {
+		t.Fatalf("poll waits = %v", waits)
+	}
+	expectedReference, _, err := cloudCredentialReference(server.URL, "org-1", "app-1", "sh.attribution.fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.reference != expectedReference || store.token != testAccessToken {
 		t.Fatalf("keychain write = reference %q token %q", store.reference, store.token)
 	}
 	raw := readFixture(t, root, CloudConfigPath)
@@ -184,6 +222,121 @@ func TestCloudClientLiveStatusRequiresUnifiedSections(t *testing.T) {
 	}
 }
 
+func TestCloudClientRejectsLiveStatusOutsideCanonicalTaxonomy(t *testing.T) {
+	tests := map[string]func(map[string]any){
+		"extra section": func(sections map[string]any) {
+			sections["invented"] = sectionFixture("pass", "static")
+		},
+		"invented labels": func(sections map[string]any) {
+			device := sections["device"].(map[string]any)
+			device["status"] = "pass"
+			device["basis"] = "trust-me"
+			device["integrity"] = "fabricated"
+		},
+		"invalid fact timestamp": func(sections map[string]any) {
+			config := sections["config"].(map[string]any)
+			fact := sectionFixture("pass", "connectivity")
+			fact["observedAt"] = "not-a-timestamp"
+			config["facts"] = map[string]any{"connectivity": fact}
+		},
+		"empty optional detail": func(sections map[string]any) {
+			config := sections["config"].(map[string]any)
+			fact := sectionFixture("pass", "connectivity")
+			fact["detail"] = ""
+			config["facts"] = map[string]any{"connectivity": fact}
+		},
+	}
+
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			sections := map[string]any{
+				"config":     sectionFixture("pass", "static"),
+				"build":      sectionFixture("pass", "build"),
+				"your-logic": sectionFixture("pass", "simulator"),
+				"device":     sectionFixture("unknown", "none"),
+				"production": sectionFixture("unknown", "none"),
+			}
+			mutate(sections)
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(writer).Encode(map[string]any{
+					"schemaVersion": liveStatusVersion, "applicationId": "app-1",
+					"productionEvidence": false, "sections": sections,
+				})
+			}))
+			defer server.Close()
+			client, err := NewCloudClient(server.URL, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := client.GetLiveStatus(context.Background(), testAccessToken, "app-1"); err == nil {
+				t.Fatal("accepted live status outside the canonical taxonomy")
+			}
+		})
+	}
+}
+
+func TestCloudClientRejectsMissingOrNullLiveStatusContractFields(t *testing.T) {
+	tests := map[string]func(map[string]any){
+		"missing production evidence": func(envelope map[string]any) {
+			delete(envelope, "productionEvidence")
+		},
+		"null production evidence": func(envelope map[string]any) {
+			envelope["productionEvidence"] = nil
+		},
+		"null facts": func(envelope map[string]any) {
+			sections := envelope["sections"].(map[string]any)
+			sections["config"].(map[string]any)["facts"] = nil
+		},
+		"null observedAt": func(envelope map[string]any) {
+			addFactWithOptional(envelope, "observedAt", nil)
+		},
+		"null detail": func(envelope map[string]any) {
+			addFactWithOptional(envelope, "detail", nil)
+		},
+	}
+
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			envelope := validLiveStatusEnvelope()
+			mutate(envelope)
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(writer).Encode(envelope)
+			}))
+			defer server.Close()
+			client, err := NewCloudClient(server.URL, server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := client.GetLiveStatus(context.Background(), testAccessToken, "app-1"); err == nil {
+				t.Fatal("accepted missing or null live-status contract field")
+			}
+		})
+	}
+}
+
+func validLiveStatusEnvelope() map[string]any {
+	return map[string]any{
+		"schemaVersion": liveStatusVersion, "applicationId": "app-1", "productionEvidence": false,
+		"sections": map[string]any{
+			"config":     sectionFixture("pass", "static"),
+			"build":      sectionFixture("pass", "build"),
+			"your-logic": sectionFixture("pass", "simulator"),
+			"device":     sectionFixture("unknown", "none"),
+			"production": sectionFixture("unknown", "none"),
+		},
+	}
+}
+
+func addFactWithOptional(envelope map[string]any, name string, value any) {
+	sections := envelope["sections"].(map[string]any)
+	config := sections["config"].(map[string]any)
+	fact := sectionFixture("pass", "connectivity")
+	fact[name] = value
+	config["facts"] = map[string]any{"connectivity": fact}
+}
+
 func TestCloudClientRejectsProductionClaimWithoutVerifiedAppleReceipt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
@@ -245,6 +398,29 @@ func TestCloudClientRejectsHTTPAuthorizationOutsideExplicitLoopbackMode(t *testi
 	}
 	if _, err := client.CreateAuthorizationSession(context.Background(), "sh.attribution.fixture"); err == nil || !strings.Contains(err.Error(), "unsafe browser authorization URL") {
 		t.Fatalf("expected unsafe browser URL rejection, got %v", err)
+	}
+}
+
+func TestCloudClientRejectsUnboundedAuthorizationPollingInterval(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusCreated)
+		json.NewEncoder(writer).Encode(map[string]any{
+			"authorizationSessionId": "session-1",
+			"deviceCode":             testDeviceCode,
+			"verificationUri":        "http://localhost:3300/cli/authorize",
+			"userCode":               "ABCD-EFGH",
+			"expiresAt":              time.Now().Add(time.Minute).UTC().Format(time.RFC3339),
+			"pollIntervalSeconds":    31,
+		})
+	}))
+	defer server.Close()
+	client, err := NewCloudClient(server.URL, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CreateAuthorizationSession(context.Background(), "sh.attribution.fixture"); err == nil || !strings.Contains(err.Error(), "polling interval") {
+		t.Fatalf("expected bounded polling interval rejection, got %v", err)
 	}
 }
 

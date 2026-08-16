@@ -1,11 +1,25 @@
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "status": "authenticated-post-connect-resource-server",
   "authorizationBoundary": {
     "initialAuthorization": "cli-human-browser-only",
     "mcpAuthentication": "preconfigured-bearer",
     "credentialToolArguments": false,
     "credentialToolResults": false
+  },
+  "localProjectBridge": {
+    "status": "post-connect-keychain-backed-stdio",
+    "setupCommand": "attribution agent setup --host codex",
+    "configurationContainsCredential": false,
+    "toolArgumentsContainCredential": false,
+    "toolResultsContainCredential": false,
+    "contextBoundInputs": ["repository", "application", "run-manifest"],
+    "tools": [
+      "attribution_link_application",
+      "attribution_upload_run",
+      "attribution_ping",
+      "attribution_live_check"
+    ]
   },
   "tools": [
     {

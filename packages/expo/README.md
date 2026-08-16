@@ -13,8 +13,8 @@ The config plugin accepts an explicit `disableMetaConversionReporting` boolean. 
 Install the release tarball, run `attribution init`, edit `.attribution/config.yaml`, then run `attribution apply --branch` and `npx expo prebuild --clean`:
 
 ```sh
-go install github.com/attributionkit/attribution/cmd/attribution@v0.1.0-preview.2
-npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.2/attributionkit-expo-0.1.0-preview.2.tgz
+go install github.com/attributionkit/attribution/cmd/attribution@v0.1.0-preview.3
+npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.3/attributionkit-expo-0.1.0-preview.3.tgz
 ```
 
-The scoped npm name is reserved but is not claimed as published by v0.1.0-preview.2.
+The scoped npm name is reserved but is not claimed as published by v0.1.0-preview.3.

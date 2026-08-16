@@ -71,7 +71,7 @@ chmod +x "${fake_bin}/gh"
 
 export PATH="${fake_bin}:${PATH}"
 export FAKE_RELEASE_DIR="${release_dir}"
-export ATTRIBUTION_VERSION="v0.1.0-preview.2"
+export ATTRIBUTION_VERSION="v0.1.0-preview.3"
 export GH_TOKEN="fixture-token"
 export GITHUB_PATH="${fixture_root}/github-path"
 "${script_dir}/install.sh"

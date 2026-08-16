@@ -1,6 +1,6 @@
 {
   "name": "@attributionkit/expo",
-  "version": "0.1.0-preview.2",
+  "version": "0.1.0-preview.3",
   "description": "Auditable AdAttributionKit and SKAdNetwork runtime plus Expo config plugin",
   "license": "Apache-2.0",
   "homepage": "https://github.com/attributionkit/attribution#readme",

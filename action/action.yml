@@ -2,9 +2,9 @@ name: AttributionKit verify
 description: Download a pinned AttributionKit CLI release, verify its checksum, and run the independent scanner.
 inputs:
   version:
-    description: Release tag, for example v0.1.0-preview.2
+    description: Release tag, for example v0.1.0-preview.3
     required: false
-    default: v0.1.0-preview.2
+    default: v0.1.0-preview.3
   project:
     description: Project directory relative to the workspace
     required: false

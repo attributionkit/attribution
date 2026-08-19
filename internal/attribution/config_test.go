@@ -78,3 +78,25 @@ func TestParseConfigRequiresEmptyArraysToBeExplicit(t *testing.T) {
 		t.Fatalf("expected non-null skAdNetworkIds error, got %v", err)
 	}
 }
+
+func TestParseConfigRequiresPublisherModeForSourceIdentifiers(t *testing.T) {
+	missing := strings.Replace(validConfigYAML(), "    publisherMode: true\n", "", 1)
+	if _, err := ParseConfig([]byte(missing)); err == nil || !strings.Contains(err.Error(), "publisherMode is required") {
+		t.Fatalf("expected required publisherMode error, got %v", err)
+	}
+	advertiser := strings.Replace(validConfigYAML(), "    publisherMode: true", "    publisherMode: false", 1)
+	if _, err := ParseConfig([]byte(advertiser)); err == nil || !strings.Contains(err.Error(), "advertised apps") {
+		t.Fatalf("expected advertiser/source-app boundary error, got %v", err)
+	}
+}
+
+func TestParseConfigValidatesAssociatedDomains(t *testing.T) {
+	missing := strings.Replace(validConfigYAML(), "    associatedDomains:\n      - attribution.sh\n", "", 1)
+	if _, err := ParseConfig([]byte(missing)); err == nil || !strings.Contains(err.Error(), "associatedDomains is required") {
+		t.Fatalf("expected required associatedDomains error, got %v", err)
+	}
+	invalid := strings.Replace(validConfigYAML(), "      - attribution.sh", "      - https://attribution.sh/path", 1)
+	if _, err := ParseConfig([]byte(invalid)); err == nil || !strings.Contains(err.Error(), "DNS hostname") {
+		t.Fatalf("expected domain validation error, got %v", err)
+	}
+}

@@ -42,8 +42,10 @@ type ProvidersConfig struct {
 }
 
 type AppleProviderConfig struct {
-	Endpoint       string   `yaml:"endpoint" json:"endpoint"`
-	SKAdNetworkIDs []string `yaml:"skAdNetworkIds" json:"skAdNetworkIds"`
+	Endpoint          string   `yaml:"endpoint" json:"endpoint"`
+	AssociatedDomains []string `yaml:"associatedDomains" json:"associatedDomains"`
+	PublisherMode     bool     `yaml:"publisherMode" json:"publisherMode"`
+	SKAdNetworkIDs    []string `yaml:"skAdNetworkIds" json:"skAdNetworkIds"`
 }
 
 type MetaProviderConfig struct {
@@ -146,6 +148,9 @@ func validateConfig(config Config) []string {
 	}
 
 	seenSKAd := make(map[string]struct{}, len(config.Providers.Apple.SKAdNetworkIDs))
+	if !config.Providers.Apple.PublisherMode && len(config.Providers.Apple.SKAdNetworkIDs) > 0 {
+		problems = append(problems, "providers.apple.skAdNetworkIds requires providers.apple.publisherMode true; advertised apps must not install source-app identifiers")
+	}
 	for i, id := range config.Providers.Apple.SKAdNetworkIDs {
 		if !skadIDPattern.MatchString(id) {
 			problems = append(problems, fmt.Sprintf("providers.apple.skAdNetworkIds[%d] must end in .skadnetwork and contain lowercase letters or digits", i))
@@ -154,6 +159,16 @@ func validateConfig(config Config) []string {
 			problems = append(problems, fmt.Sprintf("providers.apple.skAdNetworkIds contains duplicate %q", id))
 		}
 		seenSKAd[id] = struct{}{}
+	}
+	seenDomains := make(map[string]struct{}, len(config.Providers.Apple.AssociatedDomains))
+	for i, domain := range config.Providers.Apple.AssociatedDomains {
+		if !validAssociatedDomain(domain) {
+			problems = append(problems, fmt.Sprintf("providers.apple.associatedDomains[%d] must be a lowercase DNS hostname", i))
+		}
+		if _, found := seenDomains[domain]; found {
+			problems = append(problems, fmt.Sprintf("providers.apple.associatedDomains contains duplicate %q", domain))
+		}
+		seenDomains[domain] = struct{}{}
 	}
 
 	if config.Providers.Meta != nil {
@@ -203,6 +218,8 @@ func validateRequiredConfigShape(raw []byte) []string {
 		{"eventTransports"},
 		{"providers"}, {"providers", "apple"},
 		{"providers", "apple", "endpoint"},
+		{"providers", "apple", "associatedDomains"},
+		{"providers", "apple", "publisherMode"},
 		{"providers", "apple", "skAdNetworkIds"},
 		{"schema"}, {"schema", "events"},
 	}
@@ -213,6 +230,23 @@ func validateRequiredConfigShape(raw []byte) []string {
 		}
 	}
 	return problems
+}
+
+func validAssociatedDomain(value string) bool {
+	if value == "" || len(value) > 253 || value != strings.ToLower(value) || strings.Contains(value, "..") {
+		return false
+	}
+	for _, label := range strings.Split(value, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if !(unicode.IsLower(r) || unicode.IsDigit(r) || r == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func yamlNodeAt(node *yaml.Node, path []string) *yaml.Node {

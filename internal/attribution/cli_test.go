@@ -19,11 +19,11 @@ func TestCLIEndToEndInitPlanApplyVerify(t *testing.T) {
 		t.Fatalf("init code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	code, stdout, stderr = runCLIForTest("plan", "--project", root)
-	if code != 0 || stderr != "" || !strings.Contains(stdout, "4 file(s) would change") || !strings.Contains(stdout, "No files modified") {
+	if code != 0 || stderr != "" || !strings.Contains(stdout, "5 file(s) would change") || !strings.Contains(stdout, "No files modified") {
 		t.Fatalf("plan code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	code, stdout, stderr = runCLIForTest("apply", "--project", root)
-	if code != 0 || stderr != "" || !strings.Contains(stdout, "Applied 4 change(s)") {
+	if code != 0 || stderr != "" || !strings.Contains(stdout, "Applied 5 change(s)") {
 		t.Fatalf("apply code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	code, stdout, stderr = runCLIForTest("apply", "--project", root)

@@ -6,6 +6,7 @@ const plugin = require('./withAttribution');
 
 const valid = {
   endpoint: 'https://attribution.sh/path-is-ignored',
+  publisherMode: true,
   skAdNetworkIds: ['cstr6suwn9.skadnetwork'],
   events: ['install', 'purchase'],
   schemaHash: 'a'.repeat(64),
@@ -96,4 +97,37 @@ test('merges desired SKAdNetwork ids without clobbering other plugins', () => {
     { SKAdNetworkIdentifier: 'existing.skadnetwork', Extra: true },
     { SKAdNetworkIdentifier: 'new.skadnetwork' },
   ]);
+});
+
+test('does not add source-app identifiers in the advertiser default', () => {
+  const options = plugin._internal.normalizeOptions({
+    ...valid,
+    publisherMode: false,
+    skAdNetworkIds: [],
+  });
+  const plist = { SKAdNetworkItems: [{ SKAdNetworkIdentifier: 'existing.skadnetwork' }] };
+  plugin._internal.applyInfoPlist(plist, options);
+  assert.deepEqual(plist.SKAdNetworkItems, [
+    { SKAdNetworkIdentifier: 'existing.skadnetwork' },
+  ]);
+  assert.equal(plist.AttributionCopyEndpoint, 'https://attribution.sh/');
+  assert.equal(plist.NSAdvertisingAttributionReportEndpoint, 'https://attribution.sh/');
+});
+
+test('requires explicit publisher mode before adding SKAdNetwork identifiers', () => {
+  assert.throws(
+    () => plugin._internal.normalizeOptions({ ...valid, publisherMode: false }),
+    /publisherMode/,
+  );
+});
+
+test('rejects credential-shaped fields in the bundled release manifest', () => {
+  assert.throws(
+    () =>
+      plugin._internal.normalizeOptions({
+        ...valid,
+        releaseManifest: { appId: 'public', accessToken: 'forbidden' },
+      }),
+    /forbidden credential-like field/,
+  );
 });

@@ -11,6 +11,10 @@
   "providers": {
     "apple": {
       "endpoint": "https://attribution.sh/",
+      "associatedDomains": [
+        "attribution.sh"
+      ],
+      "publisherMode": true,
       "skAdNetworkIds": [
         "cstr6suwn9.skadnetwork"
       ]

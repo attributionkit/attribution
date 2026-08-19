@@ -1,6 +1,7 @@
 {
   "platforms": ["apple"],
   "apple": {
-    "modules": ["AttributionKitExpoModule"]
+    "modules": ["AttributionKitExpoModule"],
+    "appDelegateSubscribers": ["AttributionKitAppDelegateSubscriber"]
   }
 }

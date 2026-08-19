@@ -151,7 +151,7 @@ public struct AttributionUpdateReport: Codable, Equatable, Sendable {
 }
 
 public enum AttributionCore {
-    public static let version = "0.1.0-preview.4"
+    public static let version = "0.1.0-preview.5"
 
     public static func conversionValue(
         for event: String,
@@ -169,8 +169,18 @@ public enum AttributionCore {
         // Apple explicitly permits updating AdAttributionKit and SKAdNetwork
         // independently when campaigns may use either framework. Both calls are
         // made by this one semantic owner; transport SDKs must not update values.
-        async let aak = updateAdAttributionKit(value)
-        async let skan = updateSKAdNetwork(value)
+        async let aak = update(
+            fineConversionValue: value,
+            coarseConversionValue: nil,
+            lockPostback: false,
+            driver: .adAttributionKit
+        )
+        async let skan = update(
+            fineConversionValue: value,
+            coarseConversionValue: nil,
+            lockPostback: false,
+            driver: .skAdNetwork
+        )
 
         return await AttributionUpdateReport(
             event: event,
@@ -188,11 +198,54 @@ public enum AttributionCore {
         try await record(event, configuration: AttributionConfiguration.fromBundle(bundle))
     }
 
-    private static func updateAdAttributionKit(_ value: Int) async -> AttributionBackendResult {
+    public static func update(
+        fineConversionValue value: Int,
+        coarseConversionValue: AttributionCoarseValue?,
+        lockPostback: Bool,
+        driver: AttributionAppleDriver
+    ) async -> AttributionBackendResult {
+        guard (0...63).contains(value) else {
+            return .failed(AttributionCoreError.invalidConversionValue(event: "runtime", value: value))
+        }
+        switch driver {
+        case .adAttributionKit:
+            return await updateAdAttributionKit(
+                value,
+                coarseConversionValue: coarseConversionValue,
+                lockPostback: lockPostback
+            )
+        case .skAdNetwork:
+            return await updateSKAdNetwork(
+                value,
+                coarseConversionValue: coarseConversionValue,
+                lockWindow: lockPostback
+            )
+        }
+    }
+
+    private static func updateAdAttributionKit(
+        _ value: Int,
+        coarseConversionValue: AttributionCoarseValue?,
+        lockPostback: Bool
+    ) async -> AttributionBackendResult {
         #if os(iOS) && canImport(AdAttributionKit)
         if #available(iOS 17.4, *) {
             do {
-                try await Postback.updateConversionValue(value, lockPostback: false)
+                if let coarseConversionValue {
+                    let coarse: AdAttributionKit.CoarseConversionValue
+                    switch coarseConversionValue {
+                    case .low: coarse = .low
+                    case .medium: coarse = .medium
+                    case .high: coarse = .high
+                    }
+                    try await Postback.updateConversionValue(
+                        value,
+                        coarseConversionValue: coarse,
+                        lockPostback: lockPostback
+                    )
+                } else {
+                    try await Postback.updateConversionValue(value, lockPostback: lockPostback)
+                }
                 return .succeeded
             } catch {
                 return .failed(error)
@@ -202,9 +255,29 @@ public enum AttributionCore {
         return .unavailable
     }
 
-    private static func updateSKAdNetwork(_ value: Int) async -> AttributionBackendResult {
+    private static func updateSKAdNetwork(
+        _ value: Int,
+        coarseConversionValue: AttributionCoarseValue?,
+        lockWindow: Bool
+    ) async -> AttributionBackendResult {
         #if os(iOS) && canImport(StoreKit)
-        if #available(iOS 15.4, *) {
+        if #available(iOS 16.1, *), let coarseConversionValue {
+            let coarse: SKAdNetwork.CoarseConversionValue
+            switch coarseConversionValue {
+            case .low: coarse = .low
+            case .medium: coarse = .medium
+            case .high: coarse = .high
+            }
+            return await withCheckedContinuation { continuation in
+                SKAdNetwork.updatePostbackConversionValue(
+                    value,
+                    coarseValue: coarse,
+                    lockWindow: lockWindow
+                ) { error in
+                    continuation.resume(returning: error.map(AttributionBackendResult.failed) ?? .succeeded)
+                }
+            }
+        } else if #available(iOS 15.4, *) {
             return await withCheckedContinuation { continuation in
                 SKAdNetwork.updatePostbackConversionValue(value) { error in
                     if let error {

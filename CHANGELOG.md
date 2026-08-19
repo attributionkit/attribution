@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add the durable Swift runtime outbox, anonymous app-instance registration, canonical event delivery, deep-link capture, and AdServices claim exchange.
+- Add automatic Expo lifecycle wiring and generated typed event facades for Expo and SwiftUI hosts.
+- Add publisher-mode safety, associated-domain configuration, and credential-free cloud-bound release manifests.
+
 ## 0.1.0-preview.4 - 2026-08-16
 
 - Added first-class native SwiftUI host discovery and deterministic `init`/`plan`/`apply` support without an Expo stand-in or automatic `project.pbxproj` mutation.

@@ -1,8 +1,8 @@
 Pod::Spec.new do |spec|
   spec.name = 'AttributionKitExpo'
-  spec.version = '0.1.0-preview.4'
-  spec.summary = 'Auditable AdAttributionKit and SKAdNetwork runtime for Expo.'
-  spec.description = 'Expo Modules API bridge and config plugin for the AttributionKit Swift runtime.'
+  spec.version = '0.1.0-preview.5'
+  spec.summary = 'Native attribution runtime and thin Expo Modules bridge.'
+  spec.description = 'Expo lifecycle/bootstrap and typed JavaScript bridge over the shared AttributionCore Swift implementation.'
   spec.homepage = 'https://github.com/attributionkit/attribution'
   spec.license = { type: 'Apache-2.0', file: '../LICENSE' }
   spec.author = { 'AttributionKit' => 'opensource@attribution.sh' }
@@ -11,6 +11,8 @@ Pod::Spec.new do |spec|
   spec.swift_version = '5.9'
   spec.static_framework = true
   spec.dependency 'ExpoModulesCore'
+  spec.frameworks = ['AdServices', 'AdAttributionKit', 'DeviceCheck', 'StoreKit']
+  spec.libraries = ['sqlite3']
   spec.source_files = '**/*.swift'
   spec.resource_bundles = {
     'AttributionKitExpoPrivacy' => ['PrivacyInfo.xcprivacy']

@@ -291,11 +291,12 @@ func validateProbePlan(root string, config Config, configHash, schemaDigest stri
 	if err != nil || !bytes.Equal(ignoreRaw, []byte("last-run.json\nprobe.json\n")) {
 		return errors.New("local runtime artifacts are not in the generated ignore file; run `attribution apply`")
 	}
-	expectedWrapper, err := renderWrapper(config, schemaDigest)
+	expectedWrapper, err := renderWrapper(config, schemaDigest, releaseManifestForProject(root, config, configHash, schemaDigest))
 	if err != nil {
 		return fmt.Errorf("compile expected runtime plan: %w", err)
 	}
-	if len(manifest.GeneratedFiles) != 1 || manifest.GeneratedFiles[0].Path != PluginPath || manifest.GeneratedFiles[0].SHA256 != sha256Hex(expectedWrapper) {
+	expectedFacade := renderExpoFacade(config)
+	if len(manifest.GeneratedFiles) != 2 || manifest.GeneratedFiles[0].Path != PluginPath || manifest.GeneratedFiles[0].SHA256 != sha256Hex(expectedWrapper) || manifest.GeneratedFiles[1].Path != ExpoFacadePath || manifest.GeneratedFiles[1].SHA256 != sha256Hex(expectedFacade) {
 		return errors.New("generated plan does not bind the expected runtime wrapper; run `attribution apply`")
 	}
 	if err := validateSafeTarget(root, PluginPath); err != nil {
@@ -307,6 +308,13 @@ func validateProbePlan(root string, config Config, configHash, schemaDigest stri
 	}
 	if !bytes.Equal(wrapper, expectedWrapper) {
 		return errors.New("generated runtime wrapper drifted from the current config; run `attribution apply`")
+	}
+	if err := validateSafeTarget(root, ExpoFacadePath); err != nil {
+		return err
+	}
+	facade, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(ExpoFacadePath)))
+	if err != nil || !bytes.Equal(facade, expectedFacade) {
+		return errors.New("generated typed event facade drifted from the current config; run `attribution apply`")
 	}
 	return nil
 }
@@ -326,7 +334,7 @@ func validateSwiftProbePlan(project Project, config Config, configHash, schemaDi
 	if err != nil || !bytes.Equal(ignoreRaw, []byte("last-run.json\nprobe.json\n")) {
 		return errors.New("local runtime artifacts are not in the generated ignore file; run `attribution apply`")
 	}
-	plist, err := renderSwiftPlist(config, schemaDigest)
+	plist, err := renderSwiftPlist(config, schemaDigest, releaseManifestForProject(project.Root, config, configHash, schemaDigest))
 	if err != nil {
 		return fmt.Errorf("compile expected SwiftUI plist plan: %w", err)
 	}

@@ -4,6 +4,7 @@ const (
 	SchemaVersion    = "1.1.0"
 	ConfigPath       = ".attribution/config.yaml"
 	PluginPath       = ".attribution/plugin/withAttribution.js"
+	ExpoFacadePath   = ".attribution/AttributionKit.generated.ts"
 	SwiftSourcePath  = ".attribution/swift/AttributionKit.generated.swift"
 	SwiftPlistPath   = ".attribution/swift/AttributionKit-Info.plist"
 	SwiftGuidePath   = ".attribution/swift/README.md"
@@ -19,7 +20,7 @@ const (
 
 // Version is a variable so release builds can embed the signed tag without
 // modifying source: -ldflags "-X github.com/attributionkit/attribution/internal/attribution.Version=vX.Y.Z".
-var Version = "0.1.0-preview.4"
+var Version = "0.1.0-preview.5"
 
 var knownEvents = map[string]struct{}{
 	"install":   {},

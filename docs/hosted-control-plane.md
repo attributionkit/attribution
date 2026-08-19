@@ -18,7 +18,7 @@ The probe import is local-only and can add evidence only to Your Logic. Its igno
 
 The resulting `.attribution/cloud.json` contains only the canonical API base URL, organization/application identifiers, bundle identifier, schema version, and an opaque credential reference. That reference is derived from the complete non-secret binding, so editing the file cannot redirect an existing Keychain token to another origin. The access token is stored in macOS Keychain under service `sh.attribution.cli`. Device codes and access tokens are never written to repository files or printed.
 
-Bindings written by preview.2 used the older unbound Keychain account format and fail closed in preview.3 and later. Run `attribution connect` once with preview.4 to replace that binding and Keychain entry.
+Bindings written by preview.2 used the older unbound Keychain account format and fail closed in preview.3 and later. Run `attribution connect` once with preview.5 to replace that binding and Keychain entry.
 
 For a local or staging API, use an explicit base URL during connect:
 

@@ -1,6 +1,6 @@
 'use strict';
 
-const { withInfoPlist } = require('expo/config-plugins');
+const { withEntitlementsPlist, withInfoPlist } = require('expo/config-plugins');
 
 const SKAN_ID_PATTERN = /^[a-z0-9]+\.skadnetwork$/;
 const SCHEMA_HASH_PATTERN = /^[a-f0-9]{64}$/;
@@ -21,6 +21,13 @@ function normalizeOptions(options = {}) {
     if (!SKAN_ID_PATTERN.test(id)) {
       throw new Error(`Invalid SKAdNetwork identifier: ${id}`);
     }
+  }
+
+  const publisherMode = options.publisherMode === true;
+  if (!publisherMode && skAdNetworkIds.length > 0) {
+    throw new Error(
+      'AttributionKit SKAdNetwork identifiers require publisherMode; advertised apps must not install source-app identifiers.',
+    );
   }
 
   const events = options.events ?? [];
@@ -58,13 +65,47 @@ function normalizeOptions(options = {}) {
     throw new Error('AttributionKit disableMetaConversionReporting must be a boolean.');
   }
 
+
+  const associatedDomains = [...new Set(options.associatedDomains ?? [])];
+  for (const domain of associatedDomains) {
+    if (typeof domain !== 'string' || !/^[a-z0-9.-]+$/i.test(domain) || domain.includes('..')) {
+      throw new Error(`Invalid AttributionKit associated domain: ${domain}`);
+    }
+  }
+
+  if (
+    options.reengagementPostbackCopies !== undefined &&
+    typeof options.reengagementPostbackCopies !== 'boolean'
+  ) {
+    throw new Error('AttributionKit reengagementPostbackCopies must be a boolean.');
+  }
+
+  let releaseManifestJSON;
+  if (options.releaseManifest !== undefined) {
+    if (
+      typeof options.releaseManifest !== 'object' ||
+      options.releaseManifest === null ||
+      Array.isArray(options.releaseManifest)
+    ) {
+      throw new Error('AttributionKit releaseManifest must be an object.');
+    }
+    releaseManifestJSON = JSON.stringify(options.releaseManifest);
+    if (/credential|private[_-]?key|access[_-]?token|refresh[_-]?token|secret/i.test(releaseManifestJSON)) {
+      throw new Error('AttributionKit releaseManifest contains a forbidden credential-like field.');
+    }
+  }
+
   return {
     endpoint,
     skAdNetworkIds,
+    publisherMode,
     events,
     schemaHash: options.schemaHash,
     metaAppId,
     disableMetaConversionReporting: options.disableMetaConversionReporting,
+    associatedDomains,
+    reengagementPostbackCopies: options.reengagementPostbackCopies === true,
+    releaseManifestJSON,
   };
 }
 
@@ -86,15 +127,26 @@ function mergeSKAdNetworkItems(current, desiredIds) {
 }
 
 function applyInfoPlist(modResults, options) {
+  modResults.AttributionCopyEndpoint = options.endpoint;
   modResults.NSAdvertisingAttributionReportEndpoint = options.endpoint;
-  modResults.SKAdNetworkItems = mergeSKAdNetworkItems(
-    modResults.SKAdNetworkItems,
-    options.skAdNetworkIds,
-  );
+  if (options.publisherMode) {
+    modResults.SKAdNetworkItems = mergeSKAdNetworkItems(
+      modResults.SKAdNetworkItems,
+      options.skAdNetworkIds,
+    );
+  }
   modResults.AttributionKitSchemaHash = options.schemaHash;
   modResults.AttributionKitEventValues = Object.fromEntries(
     options.events.map((event, index) => [event, index]),
   );
+  if (options.releaseManifestJSON !== undefined) {
+    modResults.AttributionKitReleaseManifestJSON = options.releaseManifestJSON;
+  }
+  if (options.reengagementPostbackCopies) {
+    modResults.EligibleForAdAttributionKitReengagementPostbackCopies = true;
+  } else {
+    delete modResults.EligibleForAdAttributionKitReengagementPostbackCopies;
+  }
 
   if (options.metaAppId !== undefined) {
     modResults.FacebookAppID = options.metaAppId;
@@ -115,8 +167,17 @@ function applyInfoPlist(modResults, options) {
 
 function withAttribution(config, rawOptions) {
   const options = normalizeOptions(rawOptions);
-  return withInfoPlist(config, (mod) => {
+  config = withInfoPlist(config, (mod) => {
     applyInfoPlist(mod.modResults, options);
+    return mod;
+  });
+  return withEntitlementsPlist(config, (mod) => {
+    const current = Array.isArray(mod.modResults['com.apple.developer.associated-domains'])
+      ? mod.modResults['com.apple.developer.associated-domains']
+      : [];
+    mod.modResults['com.apple.developer.associated-domains'] = [
+      ...new Set([...current, ...options.associatedDomains.map((domain) => `applinks:${domain}`)]),
+    ];
     return mod;
   });
 }

@@ -50,6 +50,9 @@ eventTransports: []
 providers:
   apple:
     endpoint: https://attribution.sh
+    associatedDomains:
+      - attribution.sh
+    publisherMode: true
     skAdNetworkIds:
       - cstr6suwn9.skadnetwork
   meta:
@@ -74,6 +77,9 @@ eventTransports: []
 providers:
   apple:
     endpoint: https://attribution.sh
+    associatedDomains:
+      - attribution.sh
+    publisherMode: true
     skAdNetworkIds:
       - cstr6suwn9.skadnetwork
 schema:
@@ -212,7 +218,7 @@ func newSwiftUIFixture(t *testing.T, options swiftFixtureOptions) string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		plist, err := renderSwiftPlist(config, schemaHash(config))
+		plist, err := renderSwiftPlist(config, schemaHash(config), nil)
 		if err != nil {
 			t.Fatal(err)
 		}

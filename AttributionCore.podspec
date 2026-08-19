@@ -1,8 +1,8 @@
 Pod::Spec.new do |spec|
   spec.name = 'AttributionCore'
-  spec.version = '0.1.0-preview.4'
+  spec.version = '0.1.0-preview.5'
   spec.summary = 'Auditable AdAttributionKit and SKAdNetwork conversion runtime.'
-  spec.description = 'A small Swift runtime that maps typed conversion events to Apple conversion values without identifiers, networking, or user-level data.'
+  spec.description = 'A privacy-preserving Swift attribution runtime with durable event delivery, Apple conversion updates, and AdServices claim exchange.'
   spec.homepage = 'https://github.com/attributionkit/attribution'
   spec.license = { type: 'Apache-2.0', file: 'LICENSE' }
   spec.author = { 'AttributionKit' => 'opensource@attribution.sh' }

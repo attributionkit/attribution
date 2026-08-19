@@ -37,9 +37,15 @@
         "apple": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["endpoint", "skAdNetworkIds"],
+          "required": ["endpoint", "associatedDomains", "publisherMode", "skAdNetworkIds"],
           "properties": {
             "endpoint": { "type": "string", "format": "uri", "pattern": "^https://" },
+            "associatedDomains": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$" }
+            },
+            "publisherMode": { "type": "boolean" },
             "skAdNetworkIds": {
               "type": "array",
               "uniqueItems": true,

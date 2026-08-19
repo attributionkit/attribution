@@ -2,10 +2,10 @@
 
 > Client-preview exercise only: `https://attribution.sh/` is not receiving Apple postbacks yet. Do not ship this endpoint in a production app.
 
-The native host flow ships in `v0.1.0-preview.4`. Install the release CLI before opening the fresh app:
+The native host flow ships in `v0.1.0-preview.5`. Install the release CLI before opening the fresh app:
 
 ```sh
-go install github.com/attributionkit/attribution/cmd/attribution@v0.1.0-preview.4
+go install github.com/attributionkit/attribution/cmd/attribution@v0.1.0-preview.5
 ```
 
 ## 1. Create and initialize the host

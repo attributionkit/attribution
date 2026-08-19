@@ -16,14 +16,14 @@ func TestPlanAndApplyGenerateDeterministicExpoWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.ChangedPaths) != 4 {
-		t.Fatalf("expected four changes, got %v", plan.ChangedPaths)
+	if len(plan.ChangedPaths) != 5 {
+		t.Fatalf("expected five changes, got %v", plan.ChangedPaths)
 	}
 	result, err := Apply(plan, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Changed) != 4 {
+	if len(result.Changed) != 5 {
 		t.Fatalf("unexpected apply result: %#v", result)
 	}
 	wrapper := string(readFixture(t, root, PluginPath))
@@ -55,6 +55,40 @@ func TestPlanAndApplyGenerateDeterministicExpoWrapper(t *testing.T) {
 	}
 	if manifest.GeneratedFiles[0].SHA256 != sha256Hex([]byte(wrapper)) {
 		t.Fatal("manifest wrapper hash mismatch")
+	}
+}
+
+func TestExpoPlanEmbedsOnlyPublicReleaseManifestAfterCloudBinding(t *testing.T) {
+	root := newExpoFixture(t)
+	applicationID := "019c0000-0000-7000-8000-000000000002"
+	if err := WriteCloudBinding(root, testCloudBinding(t, "https://api.attribution.test", "org-1", applicationID, "sh.attribution.fixture")); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := BuildPlan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wrapper string
+	for _, operation := range plan.Operations {
+		if operation.Path == PluginPath {
+			wrapper = string(operation.Content)
+		}
+	}
+	for _, wanted := range []string{
+		`"appId": "` + applicationID + `"`,
+		`"collectorOrigin": "https://attribution.sh/"`,
+		`"associatedDomains": [`,
+		`"attribution.sh"`,
+		`"eventSchemaVersion": "events_4"`,
+	} {
+		if !strings.Contains(wrapper, wanted) {
+			t.Errorf("release manifest missing %s\n%s", wanted, wrapper)
+		}
+	}
+	for _, forbidden := range []string{"accessToken", "credential", "privateKey", "secret"} {
+		if strings.Contains(wrapper, forbidden) {
+			t.Fatalf("release manifest leaked forbidden field %q", forbidden)
+		}
 	}
 }
 

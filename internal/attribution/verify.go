@@ -245,7 +245,7 @@ func collectObservation(root string) (observation, error) {
 			paths = append(paths, project.SwiftUI.InfoPlistPath)
 		}
 	} else {
-		paths = append(paths, PluginPath)
+		paths = append(paths, PluginPath, ExpoFacadePath)
 	}
 	for _, path := range paths {
 		if err := validateSafeTarget(project.Root, path); err != nil {
@@ -260,7 +260,7 @@ func collectObservation(root string) (observation, error) {
 		obs.config = &config
 		obs.configRaw = raw
 	}
-	generatedPaths := []string{PluginPath}
+	generatedPaths := []string{PluginPath, ExpoFacadePath}
 	if project.Host == "swiftui" {
 		generatedPaths = []string{SwiftSourcePath, SwiftPlistPath, SwiftGuidePath}
 		obs.swift = inspectSwiftUIIntegration(project)
@@ -431,7 +431,7 @@ func rulePluginWrapper(obs observation) CheckResult {
 	if obs.pluginMissing {
 		return CheckResult{Verdict: "fail", Reason: "generated Expo wrapper is missing", Remediation: "Run `attribution apply`."}
 	}
-	expected, err := renderWrapper(*obs.config, schemaHash(*obs.config))
+	expected, err := renderWrapper(*obs.config, schemaHash(*obs.config), releaseManifestForProject(obs.project.Root, *obs.config, sha256Hex(obs.configRaw), schemaHash(*obs.config)))
 	if err != nil {
 		panic(err)
 	}
@@ -569,7 +569,7 @@ func ruleEndpoint(obs observation) CheckResult {
 		}
 		return CheckResult{Verdict: "pass", Reason: "target Info.plist carries the desired Apple report-attribution endpoint"}
 	}
-	expected, _ := renderWrapper(*obs.config, schemaHash(*obs.config))
+	expected, _ := renderWrapper(*obs.config, schemaHash(*obs.config), releaseManifestForProject(obs.project.Root, *obs.config, sha256Hex(obs.configRaw), schemaHash(*obs.config)))
 	if obs.pluginMissing || !bytes.Equal(obs.pluginRaw, expected) {
 		return CheckResult{Verdict: "fail", Reason: "generated wrapper does not carry the desired HTTPS Apple endpoint", Remediation: "Run `attribution apply`."}
 	}
@@ -701,7 +701,7 @@ func ruleManifestHashes(obs observation) CheckResult {
 			{SwiftPlistPath, nil},
 			{SwiftGuidePath, renderSwiftGuide(obs.project)},
 		}
-		expected[1].raw, _ = renderSwiftPlist(*obs.config, wantedSchema)
+		expected[1].raw, _ = renderSwiftPlist(*obs.config, wantedSchema, releaseManifestForProject(obs.project.Root, *obs.config, wantedConfig, wantedSchema))
 		if len(obs.manifest.GeneratedFiles) != len(expected) {
 			return CheckResult{Verdict: "fail", Reason: "generated SwiftUI manifest has the wrong owned-file set", Remediation: "Run `attribution apply`."}
 		}
@@ -719,10 +719,23 @@ func ruleManifestHashes(obs observation) CheckResult {
 	if obs.manifest.AppConfig != (GeneratedAppConfig{Path: "app.json", Plugin: "./" + PluginPath}) {
 		return CheckResult{Verdict: "fail", Reason: "generated manifest does not record the exact app.json plugin registration", Remediation: "Run `attribution apply`."}
 	}
-	if len(obs.manifest.GeneratedFiles) != 1 || obs.manifest.GeneratedFiles[0].Path != PluginPath || obs.manifest.GeneratedFiles[0].SHA256 != sha256Hex(obs.pluginRaw) {
-		return CheckResult{Verdict: "fail", Reason: "generated wrapper hash does not match the manifest", Remediation: "Run `attribution apply`."}
+	expected := []struct {
+		path string
+		raw  []byte
+	}{
+		{PluginPath, obs.pluginRaw},
+		{ExpoFacadePath, renderExpoFacade(*obs.config)},
 	}
-	return CheckResult{Verdict: "pass", Reason: "observed config, schema, and generated wrapper hashes match the deterministic manifest"}
+	if len(obs.manifest.GeneratedFiles) != len(expected) {
+		return CheckResult{Verdict: "fail", Reason: "generated Expo manifest has the wrong owned-file set", Remediation: "Run `attribution apply`."}
+	}
+	for index, item := range expected {
+		observedRaw, found := obs.generatedRaw[item.path]
+		if !found || !bytes.Equal(observedRaw, item.raw) || obs.manifest.GeneratedFiles[index].Path != item.path || obs.manifest.GeneratedFiles[index].SHA256 != sha256Hex(observedRaw) {
+			return CheckResult{Verdict: "fail", Reason: "generated Expo artifact or manifest hash drifted at " + item.path, Remediation: "Run `attribution apply`."}
+		}
+	}
+	return CheckResult{Verdict: "pass", Reason: "observed config, schema, and generated Expo artifact hashes match the deterministic manifest"}
 }
 
 func ruleRuntimeProbe(obs observation) CheckResult {

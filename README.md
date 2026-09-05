@@ -12,22 +12,22 @@ AttributionKit is an auditable attribution configuration compiler and Apple conv
 
 The generated host manifest has a published Expo/SwiftUI discriminator in [`contracts/generated-manifest.schema.json`](contracts/generated-manifest.schema.json); cross-host artifacts and probe framework labels are rejected.
 
-The runtime contains no identifiers, event stream, or network client. It maps a declared typed event to a fine conversion value, then updates AdAttributionKit and SKAdNetwork independently through one semantic owner. Apple API results remain separate and errors are returned instead of discarded.
+The conversion-only `record` API maps a declared event to a fine conversion value and updates AdAttributionKit and SKAdNetwork independently through one semantic owner. It returns each Apple API result separately. The optional `Attribution.ready` / `Attribution.track` runtime also creates an app-local installation ID, maintains a SQLite outbox, and sends declared events and available AdServices claims to the configured collector. See [the runtime and data-use guide](docs/native-runtime.md) before enabling that surface.
 
 ## Status
 
-`v0.1.0-preview.5` is the current **client preview** candidate. Setup and static verification work fully offline. Simulator calls prove app wiring and business-logic routing only; Apple postbacks require supported physical-device or production evidence and remain `unknown` until that evidence exists.
+`v0.1.0-preview.5` is an iOS **client preview**. Setup and static verification work fully offline. Simulator calls prove app wiring and business-logic routing only; Apple postbacks require supported physical-device or production evidence and remain `unknown` until that evidence exists.
 
 **Do not ship the preview's `https://attribution.sh/` endpoint in a production app.** The receiver is not claimed by the current preview release. The public repository now defines an explicit hosted CLI client and its OpenAPI/MCP contracts, while the Vercel Blob → Workflow → PlanetScale → WorkOS implementation remains a separate private cloud system. This source change alone is not deployment evidence.
 
-The hosted client flow is documented in [docs/hosted-control-plane.md](docs/hosted-control-plane.md). It adds `connect`, `runs upload`, `ping`, `live-check`, and `agent setup` to the Go CLI without adding networking to either app runtime. Browser authorization remains CLI plus human only. After that authorization, `attribution agent setup` can register a repository-bound stdio MCP server in Codex; it reads the application credential from Keychain at execution time and never transports credentials through configuration, tool arguments, or tool results.
+The hosted client flow is documented in [docs/hosted-control-plane.md](docs/hosted-control-plane.md). Its `connect`, `runs upload`, `ping`, `live-check`, and `agent setup` commands are separate from app event delivery. Browser authorization remains CLI plus human only. After that authorization, `attribution agent setup` can register a repository-bound stdio MCP server in Codex; it reads the application credential from Keychain at execution time and never transports credentials through configuration, tool arguments, or tool results.
 
 ## Install
 
 Build the CLI from source with Go 1.24 or newer:
 
 ```sh
-go install github.com/attributionkit/attribution/cmd/attribution@latest
+go install github.com/attributionkit/attribution/cmd/attribution@v0.1.0-preview.5
 ```
 
 Release archives, third-party notices, and SHA-256 checksums are attached to each GitHub release. The Expo package is attached as an npm tarball until npm trusted publishing is activated:
@@ -61,7 +61,7 @@ The native verifier requires the official Swift package product, generated sourc
 ```sh
 npx create-expo-app@latest my-app --template blank-typescript
 cd my-app
-# Preview only: do not ship the inactive attribution.sh endpoint to production.
+# Preview only: attribution.sh is not cleared for production app use.
 # Set expo.ios.bundleIdentifier in app.json first.
 npm install https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.5/attributionkit-expo-0.1.0-preview.5.tgz
 attribution init

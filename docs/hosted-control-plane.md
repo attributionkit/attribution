@@ -1,6 +1,6 @@
 # Hosted control-plane client
 
-The hosted client is an explicit CLI surface. `AttributionCore` and `@attributionkit/expo` remain deterministic, credential-free, and network-free. The CLI never writes a bearer token into the project.
+The hosted client is an explicit CLI surface, separate from the optional app event collector runtime described in [the runtime guide](native-runtime.md). Conversion-only `record` calls do not start that collector. The CLI never writes a bearer token into the project.
 
 ## Connect
 

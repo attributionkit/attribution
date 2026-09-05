@@ -44,9 +44,9 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "expo": "^57.0.13",
-    "react": "^19.1.1",
-    "react-native": "0.82.1",
+    "expo": "^57.0.20",
+    "react": "^19.2.3",
+    "react-native": "0.86.3",
     "typescript": "^5.9.2"
   },
   "keywords": [

@@ -7,9 +7,10 @@ conversionAuthority:
 eventTransports: []
 providers:
   apple:
+    associatedDomains: []
+    publisherMode: false
     endpoint: https://attribution.sh
-    skAdNetworkIds:
-      - cstr6suwn9.skadnetwork
+    skAdNetworkIds: []
 schema:
   events:
     - install

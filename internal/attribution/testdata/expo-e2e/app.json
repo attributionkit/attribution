@@ -1,10 +1,12 @@
 {
   "expo": {
-    "name": "Attribution Go E2E",
-    "slug": "attribution-go-e2e",
     "ios": {
       "bundleIdentifier": "sh.attribution.go-e2e"
     },
-    "plugins": []
+    "name": "Attribution Go E2E",
+    "plugins": [
+      "./.attribution/plugin/withAttribution.js"
+    ],
+    "slug": "attribution-go-e2e"
   }
 }

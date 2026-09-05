@@ -18,8 +18,8 @@ func newExpoFixture(t *testing.T) string {
 		"dependencies": map[string]any{
 			"expo":         "^57.0.0",
 			AttributionPkg: "file:../expo",
-			"react":        "19.1.0",
-			"react-native": "0.82.1",
+			"react":        "19.2.3",
+			"react-native": "0.86.3",
 		},
 	}
 	appJSON := map[string]any{

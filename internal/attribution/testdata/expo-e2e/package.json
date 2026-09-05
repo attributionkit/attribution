@@ -1,10 +1,11 @@
 {
   "name": "attribution-go-e2e",
   "private": true,
+  "main": "index.js",
   "dependencies": {
-    "@attributionkit/expo": "0.1.0-preview.5",
-    "expo": "^57.0.0",
-    "react": "19.1.0",
-    "react-native": "0.82.1"
+    "@attributionkit/expo": "https://github.com/attributionkit/attribution/releases/download/v0.1.0-preview.5/attributionkit-expo-0.1.0-preview.5.tgz",
+    "expo": "~57.0.20",
+    "react": "19.2.3",
+    "react-native": "0.86.3"
   }
 }
